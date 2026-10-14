@@ -1,0 +1,249 @@
+# Volleyball player skill rating criteria
+# Language: English (source of truth for translations)
+
+meta:
+  language: en
+  version: "1.0"
+  notes:
+    credit: >-
+      This criteria is kindly taken from https://phillyvolleyball.org/ without changes. 
+      Also the rating code (A,AA,B..) is used internationally.
+
+skills:
+  attacking: Attacking
+  blocking: Blocking
+  defense: Defense
+  serve_receive: Serve Receive
+  serving: Serving
+  setting: Setting
+
+levels:
+  - level: 0
+    division: Recreational
+    criteria:
+      attacking: >-
+        The Player struggles to hit the ball over the net and/or inbounds.
+      blocking: >-
+        The player cannot get their hands near to the top of the net line or
+        cannot land safely on their side without contacting the net or another
+        player
+      defense: >-
+        The player struggles to get the ball in the air when it's hit towards
+        them.
+      serve_receive: >-
+        The player struggles to pass the ball.
+      serving: >-
+        The player struggles to execute a legal serve
+      setting: >-
+        The player struggles to accurately get a ball to their teammates to
+        hit.
+
+  - level: 1
+    division: B
+    criteria:
+      attacking: >-
+        The player can attack the ball overhand, with at least medium velocity
+        and an arched trajectory towards the last 1/3 of the court, or
+        low/medium velocity with a downward trajectory.
+      blocking: >-
+        The player can form a single block, with hands above the net or a soft
+        block near the top of the net, and land safely on their side of the
+        court.
+      defense: >-
+        The player is still learning how to read attackers, but can dig balls
+        that are hit/or tipped to them, and get them ball generally upwards and
+        towards the front zone of the court.
+      serve_receive: >-
+        The player can pass the ball towards the net/towards the front half of
+        the court from a low velocity serve.
+      serving: >-
+        The player can execute a legal serve (underhand or overhand) and get
+        the ball into play consistently.
+      setting: >-
+        When the ball is passed toward the front of the court, the player can
+        consistently get a hittable ball to their teammate, either with a bump
+        set or overhand set.
+
+  - level: 2
+    division: BB
+    criteria:
+      attacking: >-
+        The player can attack the ball with either a spike or strong downball
+        (attack with feet on the ground). They know where to reload/move on the
+        court to get in position to approach and hit the ball, and can make
+        some adjustments to off sets. Their attacks may lack power but they
+        will usually get hit in the court and in a way that makes it difficult
+        for BB players to get to it.
+      blocking: >-
+        The player can get their hands above the net and disrupt the opposing
+        attack, either touching the ball or funneling it to their teammates.
+        They can occasionally execute double blocks with the player next to
+        them. They are able to jump and land safely, and avoid contact with the
+        net.
+      defense: >-
+        The player has good court awareness and knows how to move to where a
+        ball is being hit. They can dig the ball with their platform or
+        overhand, from medium velocity spikes, and get the ball high in the air
+        allowing their team to get to it. They understand where they should set
+        up in their base position on defense. They rarely miss a free ball that
+        comes to them.
+      serve_receive: >-
+        The player can consistently (70% of the time) pass a settable ball from
+        a medium velocity serve, using their hands overhead or their platform.
+        Their setter should have at least 1 easy option to set the ball on most
+        of their passes. They have a basic understanding over where to line up
+        on the court for serve receive, but may need some directions from
+        teammates in a more organized offensive system (like a 5-1 or 6-2)
+      serving: >-
+        The player can serve overhand into the court consistently (70%). They
+        can serve specific regions of the court to try and disrupt the opposing
+        team.
+      setting: >-
+        The player can consistently set a hittable ball to their outside hitter
+        and middle from most places in the front zone, and occasionally back
+        set. They're confident in their hand setting and can set with minimal
+        double contacts. They know how to move around on the court when they
+        are the designated setter on their team (usually either in a 4-2 or a
+        5-1)
+
+  - level: 3
+    division: BB
+    criteria:
+      attacking: >-
+        The player knows where to be on the court as offensive plays are
+        developing and can jump and spike the ball with a downwards trajectory.
+        They can find holes in defenses and a good set will usually result in a
+        kill against other BB players. While they are not expected to play
+        error free, they should generally have a positive hitting percentage*.
+      blocking: >-
+        The player can reach above and penetrate over the net, taking away some
+        options from the other team. They can time their block well and track
+        setters and attackers to execute a double block with their teammates
+      defense: >-
+        The player knows where to be on the court at all times as plays are
+        developing, how to split the court, know what they are responsible for
+        in a usual base defense, and communicates with their teammates. When
+        the ball is hit towards them by other BB players, they can usually get
+        a dig up and to the front zone/towards their setter.
+      serve_receive: >-
+        The player can consistently (70% of the time) pass a serve to from
+        other BB players to target, allowing their setter to have at least easy
+        2 options to set the ball to. They know to communicate about seams with
+        their teammates and they know where to line up when running a 5-1 or
+        6-2.
+      serving: >-
+        The player can consistently (70%) serve to the location they're aiming
+        at. They can serve in a manner which causes disruption to a team's
+        ability to pass, or occasionally results in an ace, against other BB
+        players, and occasionally A players.
+      setting: >-
+        The player can accurately set any of their hitters in the front row
+        from a good pass. They can set on the run and adjust to balls in most
+        areas of the court to get their teammates a hittable ball, and
+        communicate with their hitters to get them the specific sets they want.
+        They know how to lead a 5-1 or 6-2 offensive system.
+
+  - level: 4
+    division: A
+    criteria:
+      attacking: >-
+        The player can spike the ball downwards with force. They are able to
+        adjust to off sets to still reliably hit the ball with some power or
+        into a smart spot to put the opposing team out of system. They have the
+        footwork to move around the court and take an approach in a fast passed
+        offensive system. They make smart choices/use a variety of attacking
+        option to score points even when facing a double block. They should
+        usually be hitting at least a .100 hitting percentage*.
+      blocking: >-
+        The player can reach above and penetrate over the net, taking away
+        options from the other team and channeling them into intended defensive
+        zones. They can consistently close a double block (or triple block)
+        with their teammates. Their blocks often result in a block touch, and
+        occasionally a block for a point.
+      defense: >-
+        The player can read off a block, and anticipate where the ball will be
+        hit to put themselves in position to dig the ball against an A level
+        offense with multiple attackers. They have strong defensive mechanics
+        and instincts. When the ball is rolled or tipped near them, they will
+        usually get a good dig to their setter.
+      serve_receive: >-
+        The player can consistently (75% of the time) pass a serve to from
+        other A players to target, allowing their setter to have at least 2
+        easy options to set the ball to. They rarely get aced and their bad
+        passes are generally still playable by one of their teammates.
+      serving: >-
+        Against other A level players they can serve in a manner which causes
+        disruption to a team's ability to pass, or occasionally results in an
+        ace. They may take more risks/serve more aggressively, but the majority
+        of time they should be getting the ball over the net and inbounds.
+      setting: >-
+        The player can run a high level offense, adjusting to passes all over
+        the court. They have the ability to call and execute specific plays
+        with their attackers. They can set on the run and even on poor passes
+        they are usually able to get a hittable ball to their teammates
+
+  - level: 5
+    division: A
+    criteria:
+      attacking: >-
+        The player will consistently score points against other A level
+        players. They can attack effectively from the front or back row and
+        score points even on off sets. They have the game knowledge and
+        athleticism to run a more complex offense with designed plays. They
+        should usually be hitting at least a .250 hitting percentage*.
+      blocking: >-
+        The player can make quick adjustments against offenses with multiple
+        high level attackers, tracking the opposing setter and attackers. Their
+        block is fully penetrating to the other side and puts pressure on high
+        level hitters, getting touches, blocks, or forcing errors.
+      defense: >-
+        The player can read and adjust to high level attackers. They
+        effectively cover their responsibilities on the court and can get digs
+        off even the highest level attackers, and give their teammates a chance
+        to play the ball.
+      serve_receive: >-
+        The player can consistently (85% of the time) pass a serve to target
+        from other A level players, allowing their setter to consistently have
+        a full 3 options to set the ball. The player rarely gets aced, and bad
+        passes are still good enough to be converted to out of system attacks.
+      serving: >-
+        Against other A level players they routinely (80%) serve in a manner
+        which causes disruption to a team's ability to pass. They will
+        frequently get aces against lower level players.
+      setting: >-
+        The player has a high level of technical skill to set the ball from all
+        over the court, and also make smart decisions on the court to match.
+        They have the ability to keep their team in system on mediocre passes,
+        and run designed plays to give their attackers an advantage over
+        blockers. They better the ball nearly every time they touch it.
+
+  - level: 6
+    division: AA
+    criteria:
+      attacking: >-
+        The player is a top contributor to a high level offense. They are very
+        athletic and can adjust to opposing blockers and defensive schemes to
+        score points with a very high level of consistency.
+      blocking: >-
+        The player can read and adjust to AA level offenses while physically
+        contributing to the blocking system with block assists or solo blocks,
+        or can dominate an A level opposition's offense resulting in multiple
+        blocks per game.
+      defense: >-
+        The player has strong defensive instincts and athleticism to put them
+        in the right place to dig the ball against the highest level
+        offense/attackers. When they dig a ball, they get the ball high and to
+        the front court where the setter has multiple options.
+      serve_receive: >-
+        The player consistently (90% of the time) passes to target on serves
+        from other AA level players. The player rarely gets aced, and will
+        almost always give a playable ball to their team.
+      serving: >-
+        Against other AA level players they can serve in a manner that pushes
+        the opposing team out of system. They routinely get aces against lower
+        level players.
+      setting: >-
+        The player can run a complex offense and set with high levels of
+        consistency in height, spacing, and tempo. They make smart decisions
+        and help to scheme their hitters open, to give them an advantage over
+        an AA level block.
