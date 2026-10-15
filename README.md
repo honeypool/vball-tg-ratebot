@@ -89,19 +89,19 @@ Rate another player
 * players (m2m)
 
 **Ratings:**
-datetime
-player (o2m)
-player_level
-rater (o2m)
-rater_level
-rating_serve
-rating_serve_receive
-rating_setting
-rating_attack
-rating_blocking
-rating_defence
-avg_rating
-games_count
-weight
+* datetime
+* player (o2m)
+* player_level_fixed
+* rater (o2m)
+* rater_level_fixed
+* rating_serve
+* rating_serve_receive
+* rating_setting
+* rating_attack
+* rating_blocking
+* rating_defence
+* avg_rating
+* games_count_fixed
+* weight
 
 
