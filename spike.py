@@ -3,7 +3,7 @@
     .venv\\Scripts\\python spike.py <your_id> [<member_id>]
 
 1. sends <your_id> the real rating screen (Serving, levels 1-5), then edits it to levels 2-6
-2. if <member_id> is given (a regular member, NOT the owner/admin): sets their tag to "~~2.5",
+2. if <member_id> is given (a regular member, NOT the owner/admin): sets their tag to "[~~2.5]",
    waits 20 s so you can look at the group, then removes it
 Delete this file once everything works.
 """
@@ -30,7 +30,7 @@ async def main(uid: int, member: int | None):
         if member:
             m = await bot.get_chat_member(GROUP_ID, member)
             print(f"member status: {m.status}")
-            print("set tag:", await bot.set_chat_member_tag(chat_id=GROUP_ID, user_id=member, tag="~~2.5"))
+            print("set tag:", await bot.set_chat_member_tag(chat_id=GROUP_ID, user_id=member, tag="[~~2.5]"))
             print("check the group now; removing in 20 s...")
             await asyncio.sleep(20)
             print("remove tag:", await bot.set_chat_member_tag(chat_id=GROUP_ID, user_id=member, tag=""))

@@ -22,11 +22,11 @@ def test_nightly_updates_only_changed_tags(monkeypatch):
         db.add_player(uid)
     db.save_rating(1, 1, [2] * 6)
     db.save_rating(2, 2, [4] * 6)
-    db.set_tag_shown(1, "~~2.0")                 # already correct -> no call
+    db.set_tag_shown(1, "[~~2.0]")                 # already correct -> no call
     bot = FakeBot()
     asyncio.run(nightly.run(bot, db, -100))
-    assert bot.calls == [(2, "~~4.0")]           # player 3 has no rating -> no tag
-    assert db.player(2)["tag_shown"] == "~~4.0"
+    assert bot.calls == [(2, "[~~4.0]")]           # player 3 has no rating -> no tag
+    assert db.player(2)["tag_shown"] == "[~~4.0]"
     assert db.player(1)["level"] == 2.0 and db.player(3)["level"] is None
 
     bot.calls.clear()

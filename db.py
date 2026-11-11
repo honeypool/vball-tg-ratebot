@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 
 from rating import DISCIPLINES, Rating
 
@@ -58,6 +59,12 @@ COUNTING = f"""counting AS (
 )"""
 
 TABLES = ("players", "games", "game_players", "ratings")
+
+
+class Added(NamedTuple):
+    added: list[int]   # newly added to the game
+    clash: list[int]   # skipped: already in another game within ±1h
+    full: list[int]    # skipped: game reached MAX_PLAYERS
 
 
 def iso(dt: datetime) -> str:
@@ -126,39 +133,51 @@ class DB:
                          FROM games g WHERE id = ?""", game_id)
         return rows[0] if rows else None
 
-    def find_game_near(self, start: datetime) -> sqlite3.Row | None:
-        rows = self.q("SELECT * FROM games WHERE start_at BETWEEN ? AND ? ORDER BY start_at LIMIT 1",
-                      iso(start - CLASH), iso(start + CLASH))
+    def game_player_ids(self, game_id: int) -> list[int]:
+        return [r[0] for r in self.q("SELECT player_id FROM game_players WHERE game_id = ?", game_id)]
+
+    def matching_game(self, start: datetime, uids: list[int]) -> sqlite3.Row | None:
+        """A game within ±1h of `start` sharing at least one of `uids` (the one sharing most)."""
+        marks = ",".join("?" * len(uids))
+        rows = self.q(f"""SELECT g.*, COUNT(*) AS shared FROM games g
+                          JOIN game_players gp ON gp.game_id = g.id AND gp.player_id IN ({marks})
+                          WHERE g.start_at BETWEEN ? AND ?
+                          GROUP BY g.id ORDER BY shared DESC, g.start_at LIMIT 1""",
+                      *uids, iso(start - CLASH), iso(start + CLASH))
         return rows[0] if rows else None
 
-    def create_game(self, start: datetime, creator: int) -> int:
+    def create_game(self, start: datetime, creator: int, uids: list[int]) -> tuple[int, Added]:
+        """New game with the selected players (README §6)."""
         with self.tx():
-            t = iso(now())
             gid = self.conn.execute("INSERT INTO games (start_at, created_by, created_at) VALUES (?, ?, ?)",
-                                    (iso(start), creator, t)).lastrowid
-            self.conn.execute("INSERT INTO game_players (game_id, player_id, joined_at) VALUES (?, ?, ?)",
-                              (gid, creator, t))
-        return gid
+                                    (iso(start), creator, iso(now()))).lastrowid
+            return gid, self._add(gid, start, uids)
 
-    def join_game(self, game_id: int, uid: int) -> str:
-        """Returns 'ok', 'missing', 'already', 'clash' or 'full'."""
+    def add_players(self, game_id: int, uids: list[int]) -> Added:
         with self.tx():
-            g = self.game(game_id)
-            if g is None:
-                return "missing"
+            return self._add(game_id, parse(self.game(game_id)["start_at"]), uids)
+
+    def _add(self, game_id: int, start: datetime, uids: list[int]) -> Added:
+        """Adds players who are not in it yet. Skips anyone in another game within ±1h, and stops at
+        MAX_PLAYERS. Call inside a transaction."""
+        res = Added([], [], [])
+        n = self.one("SELECT COUNT(*) FROM game_players WHERE game_id = ?", game_id)
+        t = iso(now())
+        for uid in uids:
             if self.one("SELECT 1 FROM game_players WHERE game_id = ? AND player_id = ?", game_id, uid):
-                return "already"
-            start = parse(g["start_at"])
-            clash = self.one("""SELECT 1 FROM game_players gp JOIN games g ON g.id = gp.game_id
-                                WHERE gp.player_id = ? AND g.id != ? AND g.start_at BETWEEN ? AND ?""",
-                             uid, game_id, iso(start - CLASH), iso(start + CLASH))
-            if clash:
-                return "clash"
-            if g["n"] >= MAX_PLAYERS:
-                return "full"
-            self.conn.execute("INSERT INTO game_players (game_id, player_id, joined_at) VALUES (?, ?, ?)",
-                              (game_id, uid, iso(now())))
-        return "ok"
+                continue
+            if self.one("""SELECT 1 FROM game_players gp JOIN games g ON g.id = gp.game_id
+                           WHERE gp.player_id = ? AND g.id != ? AND g.start_at BETWEEN ? AND ?""",
+                        uid, game_id, iso(start - CLASH), iso(start + CLASH)):
+                res.clash.append(uid)
+            elif n >= MAX_PLAYERS:
+                res.full.append(uid)
+            else:
+                self.conn.execute("INSERT INTO game_players (game_id, player_id, joined_at) VALUES (?, ?, ?)",
+                                  (game_id, uid, t))
+                res.added.append(uid)
+                n += 1
+        return res
 
     def recent_games(self, uid: int, limit: int = 10) -> list[sqlite3.Row]:
         return self.q("""SELECT g.id, g.start_at, (SELECT COUNT(*) FROM game_players WHERE game_id = g.id) AS n

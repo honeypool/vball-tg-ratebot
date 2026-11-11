@@ -42,14 +42,14 @@ def test_worked_example_anna():
     assert res.level == pytest.approx(2.5, abs=1e-6)
     assert res.peer_weight_sum == pytest.approx(1.5, abs=1e-6)
     # 1.5 - tiny epsilon from w_games < 1 would give "~"; README treats it as exactly 1.5
-    assert tag_text(2.5, 1.5, True) == "2.5"
+    assert tag_text(2.5, 1.5, True) == "[2.5]"
 
 
 def test_self_only_gets_double_tilde():
     me = 7
     res = compute_levels([Rating(me, me, (2, 3, None, None, None, None), NOW)], {}, {}, NOW)[me]
     assert res.level == pytest.approx(2.5)
-    assert res.tag == "~~2.5"
+    assert res.tag == "[~~2.5]"
     assert res.peer_weight_sum == 0
 
 
@@ -58,7 +58,7 @@ def test_low_peer_weight_single_tilde():
         Rating(1, 1, (3,) * 6, NOW),
         Rating(1, 2, (3,) * 6, NOW),
     ], {pair(1, 2): 1}, {}, NOW)[1]
-    assert res.tag == "~3.0"
+    assert res.tag == "[~3.0]"
 
 
 def test_discipline_without_scores_is_left_out():
@@ -74,7 +74,7 @@ def test_zero_weight_peer_rating_ignored():
         Rating(1, 2, (6,) * 6, NOW),
     ], {}, {}, NOW)[1]
     assert res.level == pytest.approx(2.0)
-    assert res.tag == "~2.0"
+    assert res.tag == "[~2.0]"
 
 
 @pytest.mark.parametrize("center,start", [(0.4, 0), (3.2, 1), (5.8, 2), (3, 1), (2.5, 1), (6, 2), (0, 0)])

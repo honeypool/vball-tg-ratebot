@@ -17,37 +17,48 @@ def db():
 
 
 def game_with(db, players, start):
-    gid = db.create_game(start, players[0])
-    for p in players[1:]:
-        assert db.join_game(gid, p) == "ok"
+    gid, res = db.create_game(start, players[0], players)
+    assert res.added == players
     return gid
 
 
-def test_near_game_found_within_hour(db):
-    t = now() - timedelta(days=1)
-    gid = db.create_game(t, 1)
-    assert db.find_game_near(t + timedelta(minutes=30))["id"] == gid
-    assert db.find_game_near(t + timedelta(minutes=61)) is None
-    assert db.game(gid)["n"] == 1  # creator auto-joined
+def test_create_game_with_selected_players(db):
+    gid = game_with(db, [1, 2, 3, 4], now() - H)
+    assert sorted(db.game_player_ids(gid)) == [1, 2, 3, 4]
+    assert db.game(gid)["created_by"] == 1
 
 
-def test_join_rejections(db):
+def test_matching_game_needs_time_and_shared_player(db):
     t = now() - timedelta(days=1)
-    g1 = db.create_game(t, 1)
-    g2 = db.create_game(t + timedelta(minutes=45), 2)
-    assert db.join_game(g1, 1) == "already"
-    assert db.join_game(g2, 1) == "clash"          # 19:00 vs 19:45
-    assert db.join_game(999, 1) == "missing"
-    g3 = db.create_game(t + 3 * H, 3)
-    assert db.join_game(g3, 1) == "ok"
+    gid = game_with(db, [1, 2, 3, 4], t)
+    half = timedelta(minutes=30)
+    assert db.matching_game(t + half, [4, 5, 6, 7])["id"] == gid      # 30 min away, shares player 4
+    assert db.matching_game(t + half, [5, 6, 7]) is None             # same time, other court
+    assert db.matching_game(t + timedelta(minutes=61), [1, 2]) is None
+    assert db.one("SELECT COUNT(*) FROM games") == 1                  # matching creates nothing
+
+
+def test_matching_prefers_most_shared(db):
+    t = now() - timedelta(days=1)
+    game_with(db, [1, 2, 3, 4], t)
+    g2 = game_with(db, [5, 6, 7], t + timedelta(minutes=10))
+    assert db.matching_game(t, [1, 5, 6])["id"] == g2
+
+
+def test_add_players_skips_existing_and_clashes(db):
+    t = now() - timedelta(days=1)
+    g1 = game_with(db, [1, 2, 3, 4], t)
+    game_with(db, [5, 6], t + timedelta(minutes=45))                  # 19:00 vs 19:45
+    res = db.add_players(g1, [1, 5, 7])
+    assert res.added == [7] and res.clash == [5] and res.full == []
+    assert sorted(db.game_player_ids(g1)) == [1, 2, 3, 4, 7]
 
 
 def test_full_game(db, monkeypatch):
     import db as dbmod
     monkeypatch.setattr(dbmod, "MAX_PLAYERS", 2)
-    g = db.create_game(now() - H, 1)
-    assert db.join_game(g, 2) == "ok"
-    assert db.join_game(g, 3) == "full"
+    gid, res = db.create_game(now() - H, 1, [1, 2, 3])
+    assert res.added == [1, 2] and res.full == [3]
 
 
 def test_three_player_game_does_not_count(db):
@@ -59,7 +70,7 @@ def test_three_player_game_does_not_count(db):
 
 def test_four_player_game_counts(db):
     gid = game_with(db, [1, 2, 3], now() - timedelta(days=2))
-    db.join_game(gid, 4)
+    db.add_players(gid, [4])
     assert {r["pid"] for r in db.rate_candidates(1, RERATE)} == {2, 3, 4}
     assert db.together(1, 2)[0] == 1
     assert db.together_matrix()[(1, 2)] == 1

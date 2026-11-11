@@ -20,8 +20,7 @@ def criteria(level: int, discipline: str) -> str:
     return _LEVELS[level]["criteria"][discipline].strip()
 
 
-def division(level: int) -> str:
-    return _LEVELS[level]["division"]
+NET_NOTE = "Players of both genders should be rated on games with standard male net height of 2.43m."
 
 
 NOT_MEMBER = "This bot only works for members of the group."
@@ -41,7 +40,7 @@ DECLINED = "No problem. Send /start if you change your mind."
 
 SELF_RATE_INTRO = (
     "First, rate yourself honestly in 6 disciplines. "
-    "This gives you a starting level until other players rate you."
+    "This gives you a starting level until other players rate you.\n\n" + NET_NOTE
 )
 SELF_RATE_DONE = "Thanks! Your starting tag <b>{tag}</b> is now shown in the group."
 SELF_RATE_DONE_NO_TAG = (
@@ -63,28 +62,30 @@ ASK_GAME_TIME = (
 )
 BAD_TIME = "I couldn't read that. Please use the format <code>08.11 19:00</code>."
 FUTURE_TIME = "The game must be in the past. Submit it after it has started."
-GAME_EXISTS = "A game at {time} on {date} already exists, join it?"
-GAME_CREATED = (
-    "Game on {date} at {time} created, and you're in.\n\n"
-    "Share this link in the group so players can join:\n{link}"
-)
-BTN_JOIN = "Join"
-BTN_CANCEL = "Cancel"
 
-JOIN_ASK = "Join the game on {date} at {time}?"
-JOINED = "You're in. Rate your teammates when you're ready."
+PICK_PLAYERS = (
+    "Who played on <b>{date} at {time}</b>?\n"
+    "Tick at least {min} players, including yourself if you played. (page {page}/{pages})"
+)
+BTN_DONE = "✔ Done ({n} selected)"
+NEED_MIN = "Select at least {min} players."
+GAME_EXISTS = (
+    "A game on <b>{date} at {time}</b> already exists with these players:\n{existing}\n\n"
+    "To be added: {new}\n\n"
+    "Submit your participation in a game on {date} at {time}?"
+)
+ALL_ALREADY_IN = "All selected players are already in the game on {date} at {time}."
+BTN_SUBMIT_PARTICIPATION = "Submit"
+BTN_CANCEL = "Cancel"
+GAME_SAVED = "Saved. The game on {date} at {time} has {n} players. Rate your teammates when you're ready."
+SKIPPED_CLASH = "Not added (already in another game within an hour): {names}"
+SKIPPED_FULL = "Not added (the game is full): {names}"
 BTN_RATE_PLAYERS = "⭐ Rate players"
-JOIN_ERRORS = {
-    "missing": "This game doesn't exist.",
-    "already": "You're already in this game.",
-    "clash": "You're already in another game within an hour of this one.",
-    "full": "This game is full.",
-}
 CANCELLED = "Cancelled."
 
 NO_CANDIDATES = (
     "There's nobody you can rate yet. You can rate players after you've played "
-    "a game together with at least 4 players. Join games via the links shared in the group."
+    "a game together with at least 4 players. Submit your games from the menu."
 )
 CANDIDATES_TOP = (
     "You had a chance to play with these players who really need your rating. "
@@ -94,12 +95,6 @@ CANDIDATES_ALL = "All players you can rate (page {page}/{pages}):"
 BTN_SHOW_ALL = "Show all"
 NOT_RATEABLE = "You can only rate players you've played a counting game with."
 
-RATE_HEADER = (
-    "Rating <b>{name}</b>\n"
-    "Games together: {games}\n"
-    "Last game together: {ago}"
-)
-DISCIPLINE_TITLE = "{name}: {discipline} ({step}/6)"
 SELF_NAME = "yourself"
 BTN_CANT_JUDGE = "Can't judge"
 NOTHING_SAVED = "Nothing was saved."

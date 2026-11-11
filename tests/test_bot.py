@@ -35,6 +35,8 @@ def test_discipline_screen_window_and_buttons():
     assert nav == ["Can't judge", "▶"]            # no ◀ at the bottom edge
     table = [b for b in rich.blocks if b.type == "table"][0]
     assert len(table.cells) == 6                   # header + 5 levels
+    assert [row[0].text for row in table.cells[1:]] == ["0", "1", "2", "3", "4"]   # no A/BB labels
+    assert rich.blocks[-1].text.startswith("Players of both genders")
 
     data = {"scores": [3] * 5, "start": 2, "header": [], "name": "yourself"}
     rich, kb = bot.discipline_screen(data)

@@ -15,17 +15,17 @@ from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatMemberStatus, ParseMode
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
-from aiogram.filters import LEAVE_TRANSITION, ChatMemberUpdatedFilter, Command, CommandObject, CommandStart
+from aiogram.filters import LEAVE_TRANSITION, ChatMemberUpdatedFilter, Command, CommandStart
 from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (BufferedInputFile, CallbackQuery, ChatMemberUpdated, InlineKeyboardButton,
-                           InlineKeyboardMarkup, InputRichBlockParagraph, InputRichBlockSectionHeading,
+                           InlineKeyboardMarkup, InputRichBlockFooter, InputRichBlockParagraph, InputRichBlockSectionHeading,
                            InputRichBlockTable, InputRichMessage, Message, RichBlockTableCell)
 
 import nightly
 import texts as T
-from db import DB, now, parse
+from db import DB, MAX_PLAYERS, MIN_COUNTING_PLAYERS, Added, iso, now, parse
 from rating import DISCIPLINES, MAX_LEVEL, MIN_LEVEL, WINDOW, clamp_window, compute_levels, window_start
 
 
@@ -64,8 +64,9 @@ class Menu(CallbackData, prefix="m"):
     action: str        # home, submit, rate, stats, revoke, revoke_yes, consent, decline
 
 
-class Join(CallbackData, prefix="j"):
-    game_id: int       # 0 = cancel
+class GamePick(CallbackData, prefix="g"):
+    kind: str          # toggle (value = player id), page, done, add (value = game id), cancel
+    value: int
 
 
 class Page(CallbackData, prefix="p"):
@@ -84,6 +85,7 @@ class Score(CallbackData, prefix="s"):
 
 class Flow(StatesGroup):
     game_time = State()
+    game_players = State()
     rating = State()
 
 
@@ -100,6 +102,7 @@ def keyboard(rows: list[list[tuple[str, CallbackData]]]) -> InlineKeyboardMarkup
 
 _member_cache: dict[int, tuple[float, bool]] = {}
 _name_cache: dict[int, tuple[float, str]] = {}
+_lookups = asyncio.Semaphore(10)  # parallel getChatMember calls when listing many players
 
 
 async def is_member(bot: Bot, uid: int) -> bool | None:
@@ -130,7 +133,8 @@ async def name_of(bot: Bot, uid: int) -> str:
     if hit and time.monotonic() - hit[0] < MEMBER_CACHE_SECONDS:
         return hit[1]
     try:
-        m = await bot.get_chat_member(GROUP_ID, uid)
+        async with _lookups:
+            m = await bot.get_chat_member(GROUP_ID, uid)
         name = _display(m.user)
     except TelegramAPIError:
         name = "Player"
@@ -188,35 +192,22 @@ async def show_menu(message: Message, uid: int) -> None:
     await message.answer(T.MENU, reply_markup=menu_kb(uid))
 
 
-async def continue_after_onboarding(message: Message, state: FSMContext, uid: int) -> None:
-    """Resume a pending game join, or show the menu."""
-    data = await state.get_data()
-    await state.clear()
-    if data.get("pending_game"):
-        await ask_join(message, uid, data["pending_game"])
-    else:
-        await show_menu(message, uid)
-
-
 def ready(uid: int) -> bool:
     return db.player(uid) is not None and db.is_self_rated(uid)
 
 
 # --- onboarding (README §4) ------------------------------------------------------
 @router.message(CommandStart())
-async def cmd_start(message: Message, command: CommandObject, state: FSMContext):
+async def cmd_start(message: Message, state: FSMContext):
     uid = message.from_user.id
     await state.clear()
-    arg = command.args or ""
-    if re.fullmatch(r"g\d+", arg):
-        await state.update_data(pending_game=int(arg[1:]))
     if db.player(uid) is None:
         await message.answer(T.WELCOME, reply_markup=keyboard([[
             (T.BTN_AGREE, Menu(action="consent")), (T.BTN_DECLINE, Menu(action="decline"))]]))
     elif not db.is_self_rated(uid):
         await start_self_rating(message, state, uid)
     else:
-        await continue_after_onboarding(message, state, uid)
+        await show_menu(message, uid)
 
 
 @router.callback_query(Menu.filter(F.action == "consent"))
@@ -225,7 +216,8 @@ async def on_consent(cb: CallbackQuery, state: FSMContext):
     db.add_player(cb.from_user.id)
     await cb.message.edit_reply_markup(reply_markup=None)
     if db.is_self_rated(cb.from_user.id):
-        await continue_after_onboarding(cb.message, state, cb.from_user.id)
+        await state.clear()
+        await show_menu(cb.message, cb.from_user.id)
     else:
         await start_self_rating(cb.message, state, cb.from_user.id)
 
@@ -279,51 +271,107 @@ async def on_game_time(message: Message, state: FSMContext, bot: Bot):
         return await message.answer(T.BAD_TIME)
     if start > now():
         return await message.answer(T.FUTURE_TIME)
-    await state.clear()
-    near = db.find_game_near(start)
-    if near:
-        date, hm = fmt_local(near["start_at"])
-        return await message.answer(T.GAME_EXISTS.format(time=hm, date=date), reply_markup=keyboard([[
-            (T.BTN_JOIN, Join(game_id=near["id"])), (T.BTN_CANCEL, Join(game_id=0))]]))
-    gid = db.create_game(start, message.from_user.id)
-    me = await bot.me()
-    date, hm = fmt_local(db.game(gid)["start_at"])
-    link = f"https://t.me/{me.username}?start=g{gid}"
-    await message.answer(T.GAME_CREATED.format(date=date, time=hm, link=link),
-                         reply_markup=home_kb(), disable_web_page_preview=True)
+    await state.set_state(Flow.game_players)
+    await state.set_data({"start": iso(start), "selected": [message.from_user.id], "page": 0})
+    await render_picker(message, state, bot, me=message.from_user.id)
 
 
-async def ask_join(message: Message, uid: int, game_id: int):
-    g = db.game(game_id)
-    if g is None:
-        return await message.answer(T.JOIN_ERRORS["missing"], reply_markup=home_kb())
-    date, hm = fmt_local(g["start_at"])
-    await message.answer(T.JOIN_ASK.format(date=date, time=hm), reply_markup=keyboard([[
-        (T.BTN_JOIN, Join(game_id=game_id)), (T.BTN_CANCEL, Join(game_id=0))]]))
+async def roster(bot: Bot, me: int) -> list[tuple[int, str]]:
+    """Every consented player with a live name: me first, then alphabetical."""
+    ids = [p["telegram_id"] for p in db.all_players()]
+    names = await asyncio.gather(*(name_of(bot, i) for i in ids))
+    return sorted(zip(ids, names), key=lambda p: (p[0] != me, p[1].casefold()))
 
 
-@router.callback_query(Join.filter())
-async def on_join(cb: CallbackQuery, callback_data: Join, state: FSMContext):
-    await cb.answer()
-    await cb.message.edit_reply_markup(reply_markup=None)
-    uid = cb.from_user.id
-    if callback_data.game_id == 0:
-        return await cb.message.answer(T.CANCELLED, reply_markup=menu_kb(uid) if ready(uid) else None)
-    if not ready(uid):
-        await state.update_data(pending_game=callback_data.game_id)
-        return await cmd_start_like(cb.message, state, uid)
-    result = db.join_game(callback_data.game_id, uid)
-    if result != "ok":
-        return await cb.message.answer(T.JOIN_ERRORS[result], reply_markup=home_kb())
-    await cb.message.answer(T.JOINED, reply_markup=keyboard([[(T.BTN_RATE_PLAYERS, Menu(action="rate"))]]))
-
-
-async def cmd_start_like(message: Message, state: FSMContext, uid: int):
-    if db.player(uid) is None:
-        await message.answer(T.WELCOME, reply_markup=keyboard([[
-            (T.BTN_AGREE, Menu(action="consent")), (T.BTN_DECLINE, Menu(action="decline"))]]))
+async def render_picker(message: Message, state: FSMContext, bot: Bot, me: int, edit: bool = False):
+    data = await state.get_data()
+    people = await roster(bot, me)
+    selected = set(data["selected"])
+    pages = max(1, -(-len(people) // PAGE_SIZE))
+    page = min(data["page"], pages - 1)
+    rows = [[(("✅ " if pid in selected else "▫️ ") + name, GamePick(kind="toggle", value=pid))]
+            for pid, name in people[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]]
+    nav = []
+    if page > 0:
+        nav.append(("◀", GamePick(kind="page", value=page - 1)))
+    if page < pages - 1:
+        nav.append(("▶", GamePick(kind="page", value=page + 1)))
+    if nav:
+        rows.append(nav)
+    rows.append([(T.BTN_DONE.format(n=len(selected)), GamePick(kind="done", value=0))])
+    rows.append([(T.BTN_CANCEL, GamePick(kind="cancel", value=0))])
+    date, hm = fmt_local(data["start"])
+    text = T.PICK_PLAYERS.format(date=date, time=hm, min=MIN_COUNTING_PLAYERS, page=page + 1, pages=pages)
+    if edit:
+        await message.edit_text(text, reply_markup=keyboard(rows))
     else:
-        await start_self_rating(message, state, uid)
+        await message.answer(text, reply_markup=keyboard(rows))
+
+
+async def names_list(bot: Bot, uids) -> str:
+    return ", ".join(html.escape(n) for n in await asyncio.gather(*(name_of(bot, u) for u in uids)))
+
+
+@router.callback_query(Flow.game_players, GamePick.filter())
+async def on_game_pick(cb: CallbackQuery, callback_data: GamePick, state: FSMContext, bot: Bot):
+    uid, kind, value = cb.from_user.id, callback_data.kind, callback_data.value
+    data = await state.get_data()
+    selected: list[int] = data["selected"]
+    if kind == "done" and len(selected) < MIN_COUNTING_PLAYERS:
+        return await cb.answer(T.NEED_MIN.format(min=MIN_COUNTING_PLAYERS), show_alert=True)
+    await cb.answer()
+
+    if kind in ("toggle", "page"):
+        if kind == "toggle":
+            if value in selected:
+                selected.remove(value)
+            elif len(selected) < MAX_PLAYERS:
+                selected.append(value)
+            await state.update_data(selected=selected)
+        else:
+            await state.update_data(page=value)
+        return await render_picker(cb.message, state, bot, me=uid, edit=True)
+
+    if kind == "cancel":
+        await state.clear()
+        await cb.message.edit_text(T.CANCELLED)
+        return await show_menu(cb.message, uid)
+
+    start = parse(data["start"])
+    if kind == "done":
+        await cb.message.edit_reply_markup(reply_markup=None)
+        game = db.matching_game(start, selected)
+        if game is None:
+            await state.clear()
+            gid, res = db.create_game(start, uid, selected)
+            return await report_saved(cb.message, bot, gid, res)
+        date, hm = fmt_local(game["start_at"])
+        existing = db.game_player_ids(game["id"])
+        new = [p for p in selected if p not in existing]
+        if not new:
+            await state.clear()
+            return await cb.message.answer(T.ALL_ALREADY_IN.format(date=date, time=hm), reply_markup=menu_kb(uid))
+        await cb.message.answer(
+            T.GAME_EXISTS.format(date=date, time=hm, existing=await names_list(bot, existing),
+                                 new=await names_list(bot, new)),
+            reply_markup=keyboard([[(T.BTN_SUBMIT_PARTICIPATION, GamePick(kind="add", value=game["id"])),
+                                    (T.BTN_CANCEL, GamePick(kind="cancel", value=0))]]))
+    elif kind == "add":
+        await state.clear()
+        await cb.message.edit_reply_markup(reply_markup=None)
+        await report_saved(cb.message, bot, value, db.add_players(value, selected))
+
+
+async def report_saved(message: Message, bot: Bot, gid: int, res: Added):
+    g = db.game(gid)
+    date, hm = fmt_local(g["start_at"])
+    lines = [T.GAME_SAVED.format(date=date, time=hm, n=g["n"])]
+    if res.clash:
+        lines.append(T.SKIPPED_CLASH.format(names=await names_list(bot, res.clash)))
+    if res.full:
+        lines.append(T.SKIPPED_FULL.format(names=await names_list(bot, res.full)))
+    await message.answer("\n\n".join(lines), reply_markup=keyboard([
+        [(T.BTN_RATE_PLAYERS, Menu(action="rate"))], [(T.BTN_MENU, Menu(action="home"))]]))
 
 
 # --- choosing whom to rate (README §7) -------------------------------------------
@@ -392,10 +440,8 @@ async def on_pick(cb: CallbackQuery, callback_data: Pick, state: FSMContext, bot
 # --- the rating screen (README §7) -----------------------------------------------
 async def begin_rating(message: Message, state: FSMContext, rater: int, target: int, center: float,
                        header: list[str], name: str = T.SELF_NAME):
-    data = await state.get_data()
     await state.set_state(Flow.rating)
-    await state.set_data({"pending_game": data.get("pending_game"), "target": target, "name": name,
-                          "header": header, "scores": [], "start": window_start(center),
+    await state.set_data({"target": target, "name": name, "header": header, "scores": [], "start": window_start(center),
                           "center": center, "msg": None})
     await render_discipline(message, state)
 
@@ -410,12 +456,13 @@ def discipline_screen(data: dict) -> tuple[InputRichMessage, InlineKeyboardMarku
         return RichBlockTableCell(align="left", valign="top", text=text, is_header=header or None)
 
     table = [[cell("Level", True), cell(T.DISCIPLINE_NAMES[key], True)]]
-    table += [[cell(f"{lv} · {T.division(lv)}"), cell(T.criteria(lv, key))] for lv in levels]
+    table += [[cell(str(lv)), cell(T.criteria(lv, key))] for lv in levels]
     blocks = [InputRichBlockSectionHeading(text=line, size=3 if i else 2) for i, line in enumerate(data["header"])]
     blocks += [
         InputRichBlockSectionHeading(text=f"{T.DISCIPLINE_NAMES[key]} ({step + 1}/6)", size=2),
         InputRichBlockTable(cells=table, is_bordered=True, is_striped=True),
         InputRichBlockParagraph(text=f"Which level fits {data['name']} best?"),
+        InputRichBlockFooter(text=T.NET_NOTE),
     ]
     rows = [[(str(lv), Score(step=step, kind="level", value=lv)) for lv in levels]]
     nav = []
@@ -481,7 +528,8 @@ async def finish_self_rating(message: Message, state: FSMContext, uid: int, scor
     if shown:
         db.set_tag_shown(uid, r.tag)
     await message.answer((T.SELF_RATE_DONE if shown else T.SELF_RATE_DONE_NO_TAG).format(tag=html.escape(r.tag)))
-    await continue_after_onboarding(message, state, uid)
+    await state.clear()
+    await show_menu(message, uid)
 
 
 async def finish_peer_rating(message: Message, state: FSMContext, uid: int, target: int, scores: list,

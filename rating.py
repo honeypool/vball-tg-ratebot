@@ -58,7 +58,7 @@ def tag_text(level: float, peer_weight_sum: float, has_peers: bool) -> str:
         prefix = "~"
     else:
         prefix = ""
-    return f"{prefix}{level:.1f}"
+    return f"[{prefix}{level:.1f}]"
 
 
 def pair(a: int, b: int) -> tuple[int, int]:

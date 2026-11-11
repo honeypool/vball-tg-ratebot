@@ -1,10 +1,51 @@
 # vball-tg-ratebot
 
-Telegram bot where volleyball players in one Telegram group rate each other's skill. Each player's level (0.0–6.0, classic indoor volleyball) is shown as a member tag next to their name in the group, e.g. `John` + tag `2.5`.
+Telegram bot where volleyball players in one Telegram group rate each other's skill. Each player's level (0.0–6.0, classic indoor volleyball) is shown as a member tag next to their name in the group, e.g. `John` + tag `[2.5]`.
 
 Ratings are anonymous to users. Only the bot admin can export the raw data.
 
 **Goal for the code: small, readable, easy to maintain.** About 5 files, roughly 1,000 lines. No ORM and no web framework.
+
+## Run and test
+
+Server deployment and Telegram setup are in [DEPLOY.md](DEPLOY.md).
+
+### Setup (once, Windows PowerShell)
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt pytest
+copy .env.example .env
+```
+
+Fill in `.env` with the **test** bot token, the test group ID and your Telegram user ID. [DEPLOY.md](DEPLOY.md) §1 shows how to find them. In the test group, the bot must be an admin with only **Manage tags** turned on.
+
+### Commands
+
+| What | Command |
+|---|---|
+| Automated tests | `.\.venv\Scripts\python -m pytest` |
+| Check Telegram features | `.\.venv\Scripts\python spike.py <your_id> [<member_id>]` |
+| Run the bot | `.\.venv\Scripts\python bot.py` (stop with Ctrl+C) |
+| Recalculate levels and tags now | `.\.venv\Scripts\python nightly.py --once` |
+
+`spike.py` sends you the real rating screen and edits it in place. If `<member_id>` is given, it also sets that member's tag to `[~~2.5]` for 20 seconds. Use a regular member, because Telegram does not allow tags for the group owner or admins.
+
+Run only one `bot.py` per token at a time. A second copy, on this PC or on the server, makes Telegram reject the first one's updates.
+
+### Manual checklist (test bot, at least 4 people in the test group)
+
+1. Someone outside the group gets "This bot only works for members of the group".
+2. Consent, then self-rate. The tag `[~~X.X]` appears in the group (not for the owner or admins).
+3. Submit a game with 3 players selected: **Done** refuses. Submit it with 4: the game is saved.
+4. Submit the same game 30 minutes later with one shared player: the bot offers to add the new players to the existing game and creates nothing.
+5. A player already in a 19:00 game is skipped when added to a 19:45 game.
+6. **Rate a player** lists only people you played a counting game (4+ players) with.
+7. On the rating screen, levels show as 0–6 and ◀ / ▶ stay within 0–6. Choosing "Can't judge" six times saves nothing.
+8. Run `nightly.py --once`: the logs show tags updated only where the text changed.
+9. **My stats** is hidden with 2 peer ratings and shown with 3.
+10. `/export` from a non-admin gets no response. From the admin, it returns a zip.
+11. Revoke consent, or leave the group: the tag disappears and the user's data is gone (check `/export`).
 
 ---
 
@@ -49,7 +90,7 @@ UI language: English only.
 1. The user opens the bot in private chat. The bot checks the user is a member of `GROUP_ID`. If not, it replies "This bot only works for members of the group" and stops.
 2. The bot shows the description and asks for consent: **[I agree] / [No thanks]**. Consent is recorded as `consent_at`.
 3. **Self-rating** (required before anything else): the same 6-discipline flow as rating someone else (§7). It is saved as a rating where `rater = player`.
-4. **Right after the self-rating, set the tag** `~~X.X` (see §9).
+4. **Right after the self-rating, set the tag** `[~~X.X]` (see §9).
 5. Show the main menu.
 
 Users who have not consented never get a tag and can't be rated.
@@ -67,21 +108,17 @@ Admin only: `/export`.
 
 ### Submit a game (menu 1)
 
+Any player can submit a game. There are no join links.
+
 1. The bot asks for the start time: "Enter the **official / announced** start time of the game (e.g. `08.11 19:00` or `08.11.2026 19:00`)." The time is read in `TZ` and stored in UTC. If no year is given, use the current year; if that date is in the future, use the previous year.
 2. The game must be in the past.
-3. If **any game exists with a start time within ±1 hour**: reply "A game at 19:00 on 08.11 already exists, join it?" with **[Join]**. Do not create a new one.
-4. Otherwise create the game. **The submitter automatically joins it.**
-5. Reply with a join link `https://t.me/<bot>?start=g<game_id>` and the text: "Share this link in the group so players can join."
+3. **Select the players**: a checkbox list of all consented players (names fetched live, the submitter first and pre-selected, 10 per page). **At least 4 players** must be selected.
+4. If a game exists **within ±1 hour that shares at least one selected player**, nothing new is created. The bot shows that game's players and the players to be added, and asks "Submit your participation in a game on 08.11 at 19:00?" with **[Submit] / [Cancel]**. Submitting adds the selected players (the submitter included, if selected) to the existing game. A game in the same hour with no shared players is a different game (e.g. another court) and is created separately.
+5. Otherwise create the game with the selected players.
+6. A player already in **another** game within ±1h is skipped with a note. A game holds at most 100 players.
+7. Reply with "Saved. The game … has N players." and a **[Rate players]** button.
 
-### Join a game (via `/start g<id>`)
-
-1. If the user has not consented or self-rated yet, run onboarding first, then continue joining.
-2. Show "Join the game on 08.11 at 19:00?" with **[Join] / [Cancel]**.
-3. Reject with a message if:
-   - the user is already in this game
-   - the user is in **another** game within ±1h of it
-   - the game already has 100 players
-4. After joining: "You're in. Rate your teammates when you're ready." with a **[Rate players]** button. This is the only reminder the bot ever sends.
+The game record still holds only the start time and the players.
 
 ### Rules
 
@@ -105,7 +142,7 @@ Show the **top 5**, with "You had a chance to play with these players who really
 
 1. Header: player name, games played together, time since the last game together.
 2. Ask the 6 disciplines one at a time: Serving, Serve receive, Setting, Attacking, Blocking, Defense.
-3. For each discipline, send one **rich message** (`sendRichMessage`) with a table of the **5 levels nearest the player's current level**. Center on the level rounded to an integer and clamp to 0–6: level 0.4 shows levels 0–4, 3.2 shows 1–5, 5.8 shows 2–6. Criteria text comes from `criteria.en.yaml`. No classic-HTML fallback.
+3. For each discipline, send one **rich message** (`sendRichMessage`) with a table of the **5 levels nearest the player's current level**. Center on the level rounded to an integer and clamp to 0–6: level 0.4 shows levels 0–4, 3.2 shows 1–5, 5.8 shows 2–6. Criteria text comes from `criteria.en.yaml`. Levels are shown only as numbers 0–6, with no division codes (A, BB…). Every screen ends with the note: "Players of both genders should be rated on games with standard male net height of 2.43m." No classic-HTML fallback.
 4. Buttons: one per shown level, **[◀]** / **[▶]** to shift the window by one level (within 0–6), and **[Can't judge]**, which saves NULL for that discipline.
 5. Self-rating: there is no current level yet, so the first discipline opens centered on 3. Each later discipline opens centered on the answer given for the previous one.
 6. At least one discipline must be answered. If all six are "Can't judge", save nothing and show "Nothing was saved."
@@ -148,9 +185,9 @@ w_age   = 0.5 ^ (age_days / 180)
 
 | Situation | Tag |
 |---|---|
-| Only a self-rating | `~~2.5` |
-| `peer_weight_sum < 1.5` | `~2.5` |
-| `peer_weight_sum ≥ 1.5` | `2.5` |
+| Only a self-rating | `[~~2.5]` |
+| `peer_weight_sum < 1.5` | `[~2.5]` |
+| `peer_weight_sum ≥ 1.5` | `[2.5]` |
 
 Because `w_age` shrinks over time, a player whose ratings are old can get the tilde back. This is intended.
 
@@ -169,13 +206,13 @@ Level of Anna, who has two peer ratings (the self-rating is left out to keep it 
 | Rating 2 | 0.5 | 2 | 3 | 2 | 2 | 2 | 2 |
 | Result | | 2.67 | 3.0 | 2.0 | 2.67 | 2.0 | 2.67 |
 
-Overall = 15.0 / 6 = **2.5**. `peer_weight_sum = 1.5`, which is ≥ 1.5, so the tag is **`2.5`**.
+Overall = 15.0 / 6 = **2.5**. `peer_weight_sum = 1.5`, which is ≥ 1.5, so the tag is **`[2.5]`**.
 
 ## 9. Tags
 
-The tag text is `{prefix}{level:.1f}` with prefix `~~`, `~` or nothing (§8). Update it:
+The tag text is `[{prefix}{level:.1f}]` (in square brackets, e.g. `[~~2.3]`, `[4.1]`) with prefix `~~`, `~` or nothing (§8). Update it:
 
-- **right after the self-rating** (`~~X.X`)
+- **right after the self-rating** (`[~~X.X]`)
 - **nightly**, only if the new text differs from `players.tag_shown`
 - **when consent is revoked or the user leaves the group**: remove the tag (empty string), immediately
 
@@ -248,9 +285,9 @@ CREATE TABLE ratings (
 ## 14. Acceptance tests
 
 1. `rating.py` reproduces both worked examples in §8 exactly.
-2. A player with only a self-rating gets tag `~~X.X` right after finishing the self-rating.
-3. Submitting a game 30 minutes away from an existing game offers [Join] and creates nothing.
-4. A user already in a game at 19:00 cannot join another game at 19:45.
+2. A player with only a self-rating gets tag `[~~X.X]` right after finishing the self-rating.
+3. Submitting a game 30 minutes away from an existing game that shares a player offers to add the players to it and creates nothing. Without a shared player, a new game is created.
+4. A player already in a game at 19:00 is not added to another game at 19:45.
 5. A game with 3 players does not count toward "games together", and its players can't rate each other through it.
 6. A user cannot rate someone they have no counting game with.
 7. Rating the same player twice leaves one row with the new scores and a new `updated_at`.
