@@ -20,7 +20,6 @@ python -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements.txt pytest
 copy .env.example .env      # then put the TEST token / group / your id in .env
 .\.venv\Scripts\python -m pytest
-.\.venv\Scripts\python spike.py <your_user_id>   # once: checks tags + rich messages
 .\.venv\Scripts\python bot.py
 ```
 

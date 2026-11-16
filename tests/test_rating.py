@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from rating import Rating, compute_levels, pair, peer_weight, tag_text, window_start, clamp_window
+from rating import Rating, compute_levels, pair, peer_weight, tag_text
 
 NOW = datetime(2026, 11, 8, tzinfo=timezone.utc)
 
@@ -75,14 +75,3 @@ def test_zero_weight_peer_rating_ignored():
     ], {}, {}, NOW)[1]
     assert res.level == pytest.approx(2.0)
     assert res.tag == "[~2.0]"
-
-
-@pytest.mark.parametrize("center,start", [(0.4, 0), (3.2, 1), (5.8, 2), (3, 1), (2.5, 1), (6, 2), (0, 0)])
-def test_window(center, start):
-    assert window_start(center) == start
-
-
-def test_window_shift_clamped():
-    assert clamp_window(-1) == 0
-    assert clamp_window(3) == 2
-    assert clamp_window(1) == 1

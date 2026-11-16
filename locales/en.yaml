@@ -1,0 +1,117 @@
+# UI strings: English (reference: ru.yaml and lv.yaml must have the same keys and {placeholders})
+LANG_NAME: "🇬🇧 English"
+CMD_START: "Open the menu"
+
+DISCIPLINES:
+  serving: Serving
+  serve_receive: Serve receive
+  setting: Setting
+  attacking: Attacking
+  blocking: Blocking
+  defense: Defense
+
+NET_NOTE: "Players of both genders should be rated on games with standard male net height of 2.43m."
+NOT_MEMBER: "This bot only works for members of the group."
+START_HINT: "Send /start to begin."
+PLAYER: "Player"
+
+WELCOME: |-
+  🏐 <b>Volleyball level bot</b>
+
+  Players of our group rate each other's skill after playing together. Your level (0.0–6.0) is shown as a tag next to your name in the group.
+
+  • Ratings are anonymous: nobody sees who rated whom.
+  • Your name is not stored. Only your Telegram ID, language, ratings and the games you played.
+  • You can revoke consent and delete all your data at any time.
+
+  Do you agree to take part?
+BTN_AGREE: "I agree"
+BTN_DECLINE: "No thanks"
+DECLINED: "No problem. Send /start if you change your mind."
+LANG_SET: "Language: English."
+
+SELF_RATE_INTRO: |-
+  First, rate yourself honestly in 6 disciplines. This gives you a starting level until other players rate you.
+
+  Players of both genders should be rated on games with standard male net height of 2.43m.
+SELF_RATE_DONE: "Thanks! Your starting tag <b>{tag}</b> is now shown in the group."
+SELF_RATE_DONE_NO_TAG: "Thanks! Your starting level is <b>{tag}</b>. Telegram doesn't allow tags for group admins and the owner, so it can't be shown next to your name."
+SELF_RATE_REQUIRED: "Please rate at least one discipline about yourself. Let's try again."
+
+MENU: "What would you like to do?"
+BTN_SUBMIT: "🏐 Submit a game"
+BTN_RATE: "⭐ Rate a player"
+BTN_STATS: "📊 My stats"
+BTN_LANGUAGE: "🌐 Language"
+BTN_REVOKE: "🗑 Revoke consent and delete my data"
+BTN_MENU: "« Menu"
+
+ASK_GAME_TIME: "Enter the <b>official / announced</b> start time of the game (e.g. <code>08.11 19:00</code> or <code>08.11.2026 19:00</code>)."
+BAD_TIME: "I couldn't read that. Please use the format <code>08.11 19:00</code>."
+FUTURE_TIME: "The game must be in the past. Submit it after it has started."
+
+PICK_PLAYERS: |-
+  Who played on <b>{date} at {time}</b>?
+  Tick at least {min} players, including yourself if you played. (page {page}/{pages})
+BTN_DONE: "✔ Done ({n} selected)"
+NEED_MIN: "Select at least {min} players."
+GAME_EXISTS: |-
+  A game on <b>{date} at {time}</b> already exists with these players:
+  {existing}
+
+  To be added: {new}
+
+  Submit your participation in a game on {date} at {time}?
+ALL_ALREADY_IN: "All selected players are already in the game on {date} at {time}."
+BTN_SUBMIT_PARTICIPATION: "Submit"
+BTN_CANCEL: "Cancel"
+GAME_SAVED: "Saved. The game on {date} at {time} has {n} players. Rate your teammates when you're ready."
+SKIPPED_CLASH: "Not added (already in another game within an hour): {names}"
+SKIPPED_FULL: "Not added (the game is full): {names}"
+BTN_RATE_PLAYERS: "⭐ Rate players"
+CANCELLED: "Cancelled."
+
+NO_CANDIDATES: "There's nobody you can rate yet. You can rate players after you've played a game together with at least 4 players. Submit your games from the menu."
+CANDIDATES_TOP: "You had a chance to play with these players who really need your rating. Please spend a few minutes to rate them."
+CANDIDATES_ALL: "All players you can rate (page {page}/{pages}):"
+BTN_SHOW_ALL: "Show all"
+NOT_RATEABLE: "You can only rate players you've played a counting game with."
+
+RATING_HEADER: "Rating {name}"
+RATING_INFO: "Games together: {games} · last: {ago}"
+DISCIPLINE_STEP: "{discipline} ({step}/6)"
+LEVEL: "Level {n}"
+WHICH_LEVEL: "Which level fits {name} best?"
+WHICH_LEVEL_SELF: "Which level fits you best?"
+BTN_CHOOSE: "✔ Choose {n}"
+BTN_CANT_JUDGE: "Can't judge"
+NOTHING_SAVED: "Nothing was saved."
+RATING_SAVED: "Thank you for rating {name}. Your rating is saved and will be taken into account soon. Levels are recalculated every night."
+EXPIRED: "This screen has expired. Please start again from the menu."
+
+STATS: |-
+  📊 <b>Your stats</b>
+
+  Level: <b>{level}</b> (tag <code>{tag}</code>)
+  {disciplines}
+
+  Peer ratings received: {received}
+  Ratings given: {given}
+
+  <b>Last games</b>
+  {games}
+STATS_GAME: "{date} {time} · {n} players"
+STATS_LOCKED: "Your stats appear after at least {n} other players have rated you."
+
+REVOKE_ASK: "Are you sure? This deletes all ratings you gave and received, your game history and your tag. This cannot be undone."
+BTN_REVOKE_YES: "Yes, delete everything"
+REVOKED: "Done. All your data is deleted. Send /start if you want to join again."
+
+AGO_TODAY: "today"
+AGO_YESTERDAY: "yesterday"
+AGO_DAYS:
+  one: "{n} day ago"
+  other: "{n} days ago"
+AGO_MONTHS:
+  one: "{n} month ago"
+  other: "{n} months ago"

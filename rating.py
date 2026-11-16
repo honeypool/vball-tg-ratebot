@@ -1,7 +1,6 @@
 """Level calculation (README §8). Pure math: no database, no Telegram."""
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -14,7 +13,6 @@ HALF_LIFE_DAYS = 180       # w_age halves every HALF_LIFE_DAYS
 CONFIDENT_WEIGHT = 1.5     # peer_weight_sum needed to drop the "~" prefix
 
 MIN_LEVEL, MAX_LEVEL = 0, 6
-WINDOW = 5                 # levels shown at once on the rating screen
 
 DISCIPLINES = ("serving", "serve_receive", "setting", "attacking", "blocking", "defense")
 
@@ -107,14 +105,3 @@ def compute_levels(ratings: list[Rating], games_together: dict[tuple[int, int], 
                 has_peers=pid in has_peers,
             )
     return results
-
-
-# --- rating screen window (README §7) ----------------------------------------
-def window_start(center: float) -> int:
-    """First level of the 5-level window centered on round(center), clamped to 0..6."""
-    c = math.floor(center + 0.5)
-    return clamp_window(c - WINDOW // 2)
-
-
-def clamp_window(start: int) -> int:
-    return max(MIN_LEVEL, min(MAX_LEVEL - WINDOW + 1, start))

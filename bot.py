@@ -8,7 +8,9 @@ import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from pathlib import Path
+from typing import Callable
 from zoneinfo import ZoneInfo
 
 from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
@@ -19,14 +21,14 @@ from aiogram.filters import LEAVE_TRANSITION, ChatMemberUpdatedFilter, Command, 
 from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (BufferedInputFile, CallbackQuery, ChatMemberUpdated, InlineKeyboardButton,
-                           InlineKeyboardMarkup, InputRichBlockFooter, InputRichBlockParagraph, InputRichBlockSectionHeading,
-                           InputRichBlockTable, InputRichMessage, Message, RichBlockTableCell)
+from aiogram.types import (BotCommand, BufferedInputFile, CallbackQuery, ChatMemberUpdated, InlineKeyboardButton,
+                           InlineKeyboardMarkup, InputRichBlockFooter, InputRichBlockParagraph,
+                           InputRichBlockSectionHeading, InputRichMessage, Message)
 
 import nightly
 import texts as T
 from db import DB, MAX_PLAYERS, MIN_COUNTING_PLAYERS, Added, iso, now, parse
-from rating import DISCIPLINES, MAX_LEVEL, MIN_LEVEL, WINDOW, clamp_window, compute_levels, window_start
+from rating import DISCIPLINES, MAX_LEVEL, MIN_LEVEL
 
 
 def _load_dotenv(path: Path) -> None:
@@ -52,16 +54,21 @@ TOP_N = 5                          # candidates on the first screen
 PAGE_SIZE = 10                     # candidates per page in "Show all"
 STATS_MIN_PEERS = 3                # peer ratings needed to see "My stats"
 MEMBER_CACHE_SECONDS = 300
-SELF_START_CENTER = 3
+FIRST_LEVEL = 0                    # level shown first on the rating screen
 
 log = logging.getLogger("bot")
 db: DB  # set in main()
 router = Router()
+Tr = Callable[..., str]            # tr("KEY", **kw) -> text in the user's language
 
 
 # --- callback data ---------------------------------------------------------------
 class Menu(CallbackData, prefix="m"):
-    action: str        # home, submit, rate, stats, revoke, revoke_yes, consent, decline
+    action: str        # home, submit, rate, stats, language, revoke, revoke_yes, consent, decline
+
+
+class Lang(CallbackData, prefix="l"):
+    code: str
 
 
 class GamePick(CallbackData, prefix="g"):
@@ -79,7 +86,7 @@ class Pick(CallbackData, prefix="r"):
 
 class Score(CallbackData, prefix="s"):
     step: int          # discipline index the button belongs to (stale presses are ignored)
-    kind: str          # level, skip, shift
+    kind: str          # show (browse to level), choose, skip
     value: int
 
 
@@ -127,7 +134,7 @@ def _display(user) -> str:
     return user.first_name + (f" @{user.username}" if user.username else "")
 
 
-async def name_of(bot: Bot, uid: int) -> str:
+async def name_of(bot: Bot, uid: int, lang: str) -> str:
     """Names are never stored: fetched live, cached in memory for a few minutes."""
     hit = _name_cache.get(uid)
     if hit and time.monotonic() - hit[0] < MEMBER_CACHE_SECONDS:
@@ -135,11 +142,15 @@ async def name_of(bot: Bot, uid: int) -> str:
     try:
         async with _lookups:
             m = await bot.get_chat_member(GROUP_ID, uid)
-        name = _display(m.user)
     except TelegramAPIError:
-        name = "Player"
+        return T.t(lang, "PLAYER")
+    name = _display(m.user)
     _name_cache[uid] = (time.monotonic(), name)
     return name
+
+
+async def names_list(bot: Bot, uids, lang: str) -> str:
+    return ", ".join(html.escape(n) for n in await asyncio.gather(*(name_of(bot, u, lang) for u in uids)))
 
 
 def live_levels():
@@ -157,7 +168,8 @@ async def forget_user(bot: Bot, uid: int) -> None:
 
 
 class MembersOnly(BaseMiddleware):
-    """Private chats only, and only for members of GROUP_ID (README §4.1)."""
+    """Private chats only, and only for members of GROUP_ID (README §4.1).
+    Also resolves the user's language and passes `lang` and `tr` to handlers."""
 
     async def __call__(self, handler, event, data):
         chat, user = data.get("event_chat"), data.get("event_from_user")
@@ -167,71 +179,119 @@ class MembersOnly(BaseMiddleware):
         if member is False and db.player(user.id):
             await forget_user(data["bot"], user.id)   # missed the "left" update
         if not member:
+            text = T.t(T.lang_from_telegram(user.language_code), "NOT_MEMBER")
             if isinstance(event, CallbackQuery):
-                await event.answer(T.NOT_MEMBER, show_alert=True)
+                await event.answer(text, show_alert=True)
             else:
-                await event.answer(T.NOT_MEMBER)
+                await event.answer(text)
             return None
+        data["lang"] = lang = await user_lang(user, data.get("state"))
+        data["tr"] = partial(T.t, lang)
         return await handler(event, data)
 
 
+async def user_lang(user, state: FSMContext | None) -> str:
+    """Stored choice -> choice made during onboarding (not stored before consent) -> Telegram app language."""
+    p = db.player(user.id)
+    if p:
+        return T.norm(p["lang"])
+    if state:
+        chosen = (await state.get_data()).get("lang")
+        if chosen:
+            return T.norm(chosen)
+    return T.lang_from_telegram(user.language_code)
+
+
 # --- menu ------------------------------------------------------------------------
-def menu_kb(uid: int) -> InlineKeyboardMarkup:
-    rows = [[(T.BTN_SUBMIT, Menu(action="submit"))], [(T.BTN_RATE, Menu(action="rate"))]]
+def menu_kb(uid: int, tr: Tr) -> InlineKeyboardMarkup:
+    rows = [[(tr("BTN_SUBMIT"), Menu(action="submit"))], [(tr("BTN_RATE"), Menu(action="rate"))]]
     if db.peer_count(uid) >= STATS_MIN_PEERS:
-        rows.append([(T.BTN_STATS, Menu(action="stats"))])
-    rows.append([(T.BTN_REVOKE, Menu(action="revoke"))])
+        rows.append([(tr("BTN_STATS"), Menu(action="stats"))])
+    rows.append([(tr("BTN_LANGUAGE"), Menu(action="language"))])
+    rows.append([(tr("BTN_REVOKE"), Menu(action="revoke"))])
     return keyboard(rows)
 
 
-def home_kb() -> InlineKeyboardMarkup:
-    return keyboard([[(T.BTN_MENU, Menu(action="home"))]])
+def home_kb(tr: Tr) -> InlineKeyboardMarkup:
+    return keyboard([[(tr("BTN_MENU"), Menu(action="home"))]])
 
 
-async def show_menu(message: Message, uid: int) -> None:
-    await message.answer(T.MENU, reply_markup=menu_kb(uid))
+async def show_menu(message: Message, uid: int, tr: Tr) -> None:
+    await message.answer(tr("MENU"), reply_markup=menu_kb(uid, tr))
 
 
 def ready(uid: int) -> bool:
     return db.player(uid) is not None and db.is_self_rated(uid)
 
 
+def lang_kb() -> InlineKeyboardMarkup:
+    return keyboard([[(T.t(code, "LANG_NAME"), Lang(code=code))] for code in T.LANGS])
+
+
+def consent_kb(tr: Tr) -> InlineKeyboardMarkup:
+    return keyboard([[(tr("BTN_AGREE"), Menu(action="consent")), (tr("BTN_DECLINE"), Menu(action="decline"))]])
+
+
 # --- onboarding (README §4) ------------------------------------------------------
 @router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext):
+async def cmd_start(message: Message, state: FSMContext, tr: Tr, lang: str):
     uid = message.from_user.id
     await state.clear()
     if db.player(uid) is None:
-        await message.answer(T.WELCOME, reply_markup=keyboard([[
-            (T.BTN_AGREE, Menu(action="consent")), (T.BTN_DECLINE, Menu(action="decline"))]]))
+        await message.answer(T.CHOOSE_LANG, reply_markup=lang_kb())
     elif not db.is_self_rated(uid):
-        await start_self_rating(message, state, uid)
+        await start_self_rating(message, state, uid, tr, lang)
     else:
-        await show_menu(message, uid)
+        await show_menu(message, uid, tr)
+
+
+@router.callback_query(Menu.filter(F.action == "language"))
+async def on_language_menu(cb: CallbackQuery):
+    await cb.answer()
+    await cb.message.answer(T.CHOOSE_LANG, reply_markup=lang_kb())
+
+
+@router.callback_query(Lang.filter())
+async def on_lang(cb: CallbackQuery, callback_data: Lang, state: FSMContext):
+    await cb.answer()
+    uid, lang = cb.from_user.id, T.norm(callback_data.code)
+    tr = partial(T.t, lang)
+    await cb.message.edit_text(tr("LANG_SET"))
+    if db.player(uid) is None:
+        # not consented yet: keep the choice in memory only, store it on consent
+        await state.update_data(lang=lang)
+        return await cb.message.answer(tr("WELCOME"), reply_markup=consent_kb(tr))
+    db.set_lang(uid, lang)
+    if ready(uid):
+        await state.clear()
+        await show_menu(cb.message, uid, tr)
+    else:
+        await start_self_rating(cb.message, state, uid, tr, lang)
 
 
 @router.callback_query(Menu.filter(F.action == "consent"))
-async def on_consent(cb: CallbackQuery, state: FSMContext):
+async def on_consent(cb: CallbackQuery, state: FSMContext, tr: Tr, lang: str):
     await cb.answer()
-    db.add_player(cb.from_user.id)
+    uid = cb.from_user.id
+    db.add_player(uid, lang)
     await cb.message.edit_reply_markup(reply_markup=None)
-    if db.is_self_rated(cb.from_user.id):
+    if db.is_self_rated(uid):
         await state.clear()
-        await show_menu(cb.message, cb.from_user.id)
+        await show_menu(cb.message, uid, tr)
     else:
-        await start_self_rating(cb.message, state, cb.from_user.id)
+        await start_self_rating(cb.message, state, uid, tr, lang)
 
 
 @router.callback_query(Menu.filter(F.action == "decline"))
-async def on_decline(cb: CallbackQuery, state: FSMContext):
+async def on_decline(cb: CallbackQuery, state: FSMContext, tr: Tr):
     await cb.answer()
     await state.clear()
-    await cb.message.edit_text(T.DECLINED)
+    await cb.message.edit_text(tr("DECLINED"))
 
 
-async def start_self_rating(message: Message, state: FSMContext, uid: int):
-    await message.answer(T.SELF_RATE_INTRO)
-    await begin_rating(message, state, uid, uid, center=SELF_START_CENTER, header=[])
+async def start_self_rating(message: Message, state: FSMContext, uid: int, tr: Tr, lang: str):
+    await message.answer(tr("SELF_RATE_INTRO"))
+    await begin_rating(message, state, lang, target=uid, is_self=True, header=[], name="")
 
 
 # --- games (README §6) -----------------------------------------------------------
@@ -256,36 +316,37 @@ def parse_game_time(text: str, now_utc: datetime) -> datetime | None:
 
 
 @router.callback_query(Menu.filter(F.action == "submit"))
-async def on_submit(cb: CallbackQuery, state: FSMContext):
+async def on_submit(cb: CallbackQuery, state: FSMContext, tr: Tr):
     await cb.answer()
     if not ready(cb.from_user.id):
-        return await cb.message.answer(T.EXPIRED)
+        return await cb.message.answer(tr("EXPIRED"))
     await state.set_state(Flow.game_time)
-    await cb.message.answer(T.ASK_GAME_TIME)
+    await cb.message.answer(tr("ASK_GAME_TIME"))
 
 
 @router.message(Flow.game_time, F.text)
-async def on_game_time(message: Message, state: FSMContext, bot: Bot):
+async def on_game_time(message: Message, state: FSMContext, bot: Bot, tr: Tr, lang: str):
     start = parse_game_time(message.text, now())
     if start is None:
-        return await message.answer(T.BAD_TIME)
+        return await message.answer(tr("BAD_TIME"))
     if start > now():
-        return await message.answer(T.FUTURE_TIME)
+        return await message.answer(tr("FUTURE_TIME"))
     await state.set_state(Flow.game_players)
     await state.set_data({"start": iso(start), "selected": [message.from_user.id], "page": 0})
-    await render_picker(message, state, bot, me=message.from_user.id)
+    await render_picker(message, state, bot, message.from_user.id, tr, lang)
 
 
-async def roster(bot: Bot, me: int) -> list[tuple[int, str]]:
+async def roster(bot: Bot, me: int, lang: str) -> list[tuple[int, str]]:
     """Every consented player with a live name: me first, then alphabetical."""
     ids = [p["telegram_id"] for p in db.all_players()]
-    names = await asyncio.gather(*(name_of(bot, i) for i in ids))
+    names = await asyncio.gather(*(name_of(bot, i, lang) for i in ids))
     return sorted(zip(ids, names), key=lambda p: (p[0] != me, p[1].casefold()))
 
 
-async def render_picker(message: Message, state: FSMContext, bot: Bot, me: int, edit: bool = False):
+async def render_picker(message: Message, state: FSMContext, bot: Bot, me: int, tr: Tr, lang: str,
+                        edit: bool = False):
     data = await state.get_data()
-    people = await roster(bot, me)
+    people = await roster(bot, me, lang)
     selected = set(data["selected"])
     pages = max(1, -(-len(people) // PAGE_SIZE))
     page = min(data["page"], pages - 1)
@@ -298,27 +359,24 @@ async def render_picker(message: Message, state: FSMContext, bot: Bot, me: int, 
         nav.append(("▶", GamePick(kind="page", value=page + 1)))
     if nav:
         rows.append(nav)
-    rows.append([(T.BTN_DONE.format(n=len(selected)), GamePick(kind="done", value=0))])
-    rows.append([(T.BTN_CANCEL, GamePick(kind="cancel", value=0))])
+    rows.append([(tr("BTN_DONE", n=len(selected)), GamePick(kind="done", value=0))])
+    rows.append([(tr("BTN_CANCEL"), GamePick(kind="cancel", value=0))])
     date, hm = fmt_local(data["start"])
-    text = T.PICK_PLAYERS.format(date=date, time=hm, min=MIN_COUNTING_PLAYERS, page=page + 1, pages=pages)
+    text = tr("PICK_PLAYERS", date=date, time=hm, min=MIN_COUNTING_PLAYERS, page=page + 1, pages=pages)
     if edit:
         await message.edit_text(text, reply_markup=keyboard(rows))
     else:
         await message.answer(text, reply_markup=keyboard(rows))
 
 
-async def names_list(bot: Bot, uids) -> str:
-    return ", ".join(html.escape(n) for n in await asyncio.gather(*(name_of(bot, u) for u in uids)))
-
-
 @router.callback_query(Flow.game_players, GamePick.filter())
-async def on_game_pick(cb: CallbackQuery, callback_data: GamePick, state: FSMContext, bot: Bot):
+async def on_game_pick(cb: CallbackQuery, callback_data: GamePick, state: FSMContext, bot: Bot, tr: Tr,
+                       lang: str):
     uid, kind, value = cb.from_user.id, callback_data.kind, callback_data.value
     data = await state.get_data()
     selected: list[int] = data["selected"]
     if kind == "done" and len(selected) < MIN_COUNTING_PLAYERS:
-        return await cb.answer(T.NEED_MIN.format(min=MIN_COUNTING_PLAYERS), show_alert=True)
+        return await cb.answer(tr("NEED_MIN", min=MIN_COUNTING_PLAYERS), show_alert=True)
     await cb.answer()
 
     if kind in ("toggle", "page"):
@@ -330,12 +388,12 @@ async def on_game_pick(cb: CallbackQuery, callback_data: GamePick, state: FSMCon
             await state.update_data(selected=selected)
         else:
             await state.update_data(page=value)
-        return await render_picker(cb.message, state, bot, me=uid, edit=True)
+        return await render_picker(cb.message, state, bot, uid, tr, lang, edit=True)
 
     if kind == "cancel":
         await state.clear()
-        await cb.message.edit_text(T.CANCELLED)
-        return await show_menu(cb.message, uid)
+        await cb.message.edit_text(tr("CANCELLED"))
+        return await show_menu(cb.message, uid, tr)
 
     start = parse(data["start"])
     if kind == "done":
@@ -344,67 +402,68 @@ async def on_game_pick(cb: CallbackQuery, callback_data: GamePick, state: FSMCon
         if game is None:
             await state.clear()
             gid, res = db.create_game(start, uid, selected)
-            return await report_saved(cb.message, bot, gid, res)
+            return await report_saved(cb.message, bot, gid, res, tr, lang)
         date, hm = fmt_local(game["start_at"])
         existing = db.game_player_ids(game["id"])
         new = [p for p in selected if p not in existing]
         if not new:
             await state.clear()
-            return await cb.message.answer(T.ALL_ALREADY_IN.format(date=date, time=hm), reply_markup=menu_kb(uid))
+            return await cb.message.answer(tr("ALL_ALREADY_IN", date=date, time=hm), reply_markup=menu_kb(uid, tr))
         await cb.message.answer(
-            T.GAME_EXISTS.format(date=date, time=hm, existing=await names_list(bot, existing),
-                                 new=await names_list(bot, new)),
-            reply_markup=keyboard([[(T.BTN_SUBMIT_PARTICIPATION, GamePick(kind="add", value=game["id"])),
-                                    (T.BTN_CANCEL, GamePick(kind="cancel", value=0))]]))
+            tr("GAME_EXISTS", date=date, time=hm, existing=await names_list(bot, existing, lang),
+               new=await names_list(bot, new, lang)),
+            reply_markup=keyboard([[(tr("BTN_SUBMIT_PARTICIPATION"), GamePick(kind="add", value=game["id"])),
+                                    (tr("BTN_CANCEL"), GamePick(kind="cancel", value=0))]]))
     elif kind == "add":
         await state.clear()
         await cb.message.edit_reply_markup(reply_markup=None)
-        await report_saved(cb.message, bot, value, db.add_players(value, selected))
+        await report_saved(cb.message, bot, value, db.add_players(value, selected), tr, lang)
 
 
-async def report_saved(message: Message, bot: Bot, gid: int, res: Added):
+async def report_saved(message: Message, bot: Bot, gid: int, res: Added, tr: Tr, lang: str):
     g = db.game(gid)
     date, hm = fmt_local(g["start_at"])
-    lines = [T.GAME_SAVED.format(date=date, time=hm, n=g["n"])]
+    lines = [tr("GAME_SAVED", date=date, time=hm, n=g["n"])]
     if res.clash:
-        lines.append(T.SKIPPED_CLASH.format(names=await names_list(bot, res.clash)))
+        lines.append(tr("SKIPPED_CLASH", names=await names_list(bot, res.clash, lang)))
     if res.full:
-        lines.append(T.SKIPPED_FULL.format(names=await names_list(bot, res.full)))
+        lines.append(tr("SKIPPED_FULL", names=await names_list(bot, res.full, lang)))
     await message.answer("\n\n".join(lines), reply_markup=keyboard([
-        [(T.BTN_RATE_PLAYERS, Menu(action="rate"))], [(T.BTN_MENU, Menu(action="home"))]]))
+        [(tr("BTN_RATE_PLAYERS"), Menu(action="rate"))], [(tr("BTN_MENU"), Menu(action="home"))]]))
 
 
 # --- choosing whom to rate (README §7) -------------------------------------------
 @router.callback_query(Menu.filter(F.action == "rate"))
-async def on_rate_menu(cb: CallbackQuery, bot: Bot):
+async def on_rate_menu(cb: CallbackQuery, bot: Bot, tr: Tr, lang: str):
     await cb.answer()
-    await show_candidates(cb.message, bot, cb.from_user.id, page=-1)
+    await show_candidates(cb.message, bot, cb.from_user.id, -1, tr, lang)
 
 
 @router.callback_query(Page.filter())
-async def on_page(cb: CallbackQuery, callback_data: Page, bot: Bot):
+async def on_page(cb: CallbackQuery, callback_data: Page, bot: Bot, tr: Tr, lang: str):
     await cb.answer()
-    await show_candidates(cb.message, bot, cb.from_user.id, page=callback_data.page, edit=True)
+    await show_candidates(cb.message, bot, cb.from_user.id, callback_data.page, tr, lang, edit=True)
 
 
-async def show_candidates(message: Message, bot: Bot, uid: int, page: int, edit: bool = False):
+async def show_candidates(message: Message, bot: Bot, uid: int, page: int, tr: Tr, lang: str,
+                          edit: bool = False):
     if not ready(uid):
-        return await message.answer(T.EXPIRED)
+        return await message.answer(tr("EXPIRED"))
     cands = db.rate_candidates(uid, RERATE_AFTER)
     if not cands:
-        return await message.answer(T.NO_CANDIDATES, reply_markup=home_kb())
+        return await message.answer(tr("NO_CANDIDATES"), reply_markup=home_kb(tr))
     pages = (len(cands) + PAGE_SIZE - 1) // PAGE_SIZE
     if page < 0:
-        shown, text = cands[:TOP_N], T.CANDIDATES_TOP
+        shown, text = cands[:TOP_N], tr("CANDIDATES_TOP")
     else:
         page = min(page, pages - 1)
         shown = cands[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
-        text = T.CANDIDATES_ALL.format(page=page + 1, pages=pages)
-    names = await asyncio.gather(*(name_of(bot, c["pid"]) for c in shown))
+        text = tr("CANDIDATES_ALL", page=page + 1, pages=pages)
+    names = await asyncio.gather(*(name_of(bot, c["pid"], lang) for c in shown))
     rows = [[(n, Pick(pid=c["pid"]))] for n, c in zip(names, shown)]
     if page < 0:
         if len(cands) > TOP_N:
-            rows.append([(T.BTN_SHOW_ALL, Page(page=0))])
+            rows.append([(tr("BTN_SHOW_ALL"), Page(page=0))])
     else:
         nav = []
         if page > 0:
@@ -413,7 +472,7 @@ async def show_candidates(message: Message, bot: Bot, uid: int, page: int, edit:
             nav.append(("▶", Page(page=page + 1)))
         if nav:
             rows.append(nav)
-    rows.append([(T.BTN_MENU, Menu(action="home"))])
+    rows.append([(tr("BTN_MENU"), Menu(action="home"))])
     if edit:
         await message.edit_text(text, reply_markup=keyboard(rows))
     else:
@@ -421,63 +480,56 @@ async def show_candidates(message: Message, bot: Bot, uid: int, page: int, edit:
 
 
 @router.callback_query(Pick.filter())
-async def on_pick(cb: CallbackQuery, callback_data: Pick, state: FSMContext, bot: Bot):
+async def on_pick(cb: CallbackQuery, callback_data: Pick, state: FSMContext, bot: Bot, tr: Tr, lang: str):
     await cb.answer()
     uid, pid = cb.from_user.id, callback_data.pid
     games, last = db.together(uid, pid)
     if not ready(uid) or pid == uid or games == 0 or db.player(pid) is None:
-        return await cb.message.answer(T.NOT_RATEABLE, reply_markup=home_kb())
-    name = await name_of(bot, pid)
-    days = (now() - parse(last)).days
-    header = [f"Rating {name}", f"Games together: {games} · last: {T.ago(days)}"]
-    stored = db.player(pid)["level"]
-    if stored is None:
-        r = live_levels().get(pid)
-        stored = r.level if r else SELF_START_CENTER
-    await begin_rating(cb.message, state, uid, pid, center=stored, header=header, name=name)
+        return await cb.message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
+    name = await name_of(bot, pid, lang)
+    header = [tr("RATING_HEADER", name=name),
+              tr("RATING_INFO", games=games, ago=T.ago(lang, (now() - parse(last)).days))]
+    await begin_rating(cb.message, state, lang, target=pid, is_self=False, header=header, name=name)
 
 
 # --- the rating screen (README §7) -----------------------------------------------
-async def begin_rating(message: Message, state: FSMContext, rater: int, target: int, center: float,
-                       header: list[str], name: str = T.SELF_NAME):
+async def begin_rating(message: Message, state: FSMContext, lang: str, target: int, is_self: bool,
+                       header: list[str], name: str):
     await state.set_state(Flow.rating)
-    await state.set_data({"target": target, "name": name, "header": header, "scores": [], "start": window_start(center),
-                          "center": center, "msg": None})
-    await render_discipline(message, state)
+    await state.set_data({"target": target, "self": is_self, "name": name, "header": header,
+                          "scores": [], "level": FIRST_LEVEL, "msg": None})
+    await render_discipline(message, state, lang)
 
 
-def discipline_screen(data: dict) -> tuple[InputRichMessage, InlineKeyboardMarkup]:
+def discipline_screen(data: dict, lang: str) -> tuple[InputRichMessage, InlineKeyboardMarkup]:
+    """One discipline, one level's criteria. ◀ / ▶ browse levels, ✔ saves the shown level."""
+    tr = partial(T.t, lang)
     step = len(data["scores"])
     key = DISCIPLINES[step]
-    start = data["start"]
-    levels = range(start, start + WINDOW)
-
-    def cell(text, header=False):
-        return RichBlockTableCell(align="left", valign="top", text=text, is_header=header or None)
-
-    table = [[cell("Level", True), cell(T.DISCIPLINE_NAMES[key], True)]]
-    table += [[cell(str(lv)), cell(T.criteria(lv, key))] for lv in levels]
+    level = data["level"]
+    question = tr("WHICH_LEVEL_SELF") if data["self"] else tr("WHICH_LEVEL", name=data["name"])
     blocks = [InputRichBlockSectionHeading(text=line, size=3 if i else 2) for i, line in enumerate(data["header"])]
     blocks += [
-        InputRichBlockSectionHeading(text=f"{T.DISCIPLINE_NAMES[key]} ({step + 1}/6)", size=2),
-        InputRichBlockTable(cells=table, is_bordered=True, is_striped=True),
-        InputRichBlockParagraph(text=f"Which level fits {data['name']} best?"),
-        InputRichBlockFooter(text=T.NET_NOTE),
+        InputRichBlockSectionHeading(text=tr("DISCIPLINE_STEP", discipline=T.discipline(lang, key), step=step + 1),
+                                     size=2),
+        InputRichBlockSectionHeading(text=tr("LEVEL", n=level), size=3),
+        InputRichBlockParagraph(text=T.criteria(lang, level, key)),
+        InputRichBlockParagraph(text=question),
+        InputRichBlockFooter(text=tr("NET_NOTE")),
     ]
-    rows = [[(str(lv), Score(step=step, kind="level", value=lv)) for lv in levels]]
-    nav = []
-    if start > MIN_LEVEL:
-        nav.append(("◀", Score(step=step, kind="shift", value=start - 1)))
-    nav.append((T.BTN_CANT_JUDGE, Score(step=step, kind="skip", value=0)))
-    if start + WINDOW - 1 < MAX_LEVEL:
-        nav.append(("▶", Score(step=step, kind="shift", value=start + 1)))
-    rows.append(nav)
+    row = []
+    if level > MIN_LEVEL:
+        row.append(("◀", Score(step=step, kind="show", value=level - 1)))
+    row.append((tr("BTN_CHOOSE", n=level), Score(step=step, kind="choose", value=level)))
+    if level < MAX_LEVEL:
+        row.append(("▶", Score(step=step, kind="show", value=level + 1)))
+    rows = [row, [(tr("BTN_CANT_JUDGE"), Score(step=step, kind="skip", value=level))]]
     return InputRichMessage(blocks=blocks), keyboard(rows)
 
 
-async def render_discipline(message: Message, state: FSMContext):
+async def render_discipline(message: Message, state: FSMContext, lang: str):
     data = await state.get_data()
-    rich, markup = discipline_screen(data)
+    rich, markup = discipline_screen(data, lang)
     bot = message.bot
     if data.get("msg"):
         try:
@@ -493,87 +545,86 @@ async def render_discipline(message: Message, state: FSMContext):
 
 
 @router.callback_query(Flow.rating, Score.filter())
-async def on_score(cb: CallbackQuery, callback_data: Score, state: FSMContext, bot: Bot):
+async def on_score(cb: CallbackQuery, callback_data: Score, state: FSMContext, bot: Bot, tr: Tr, lang: str):
     await cb.answer()
     data = await state.get_data()
     if callback_data.step != len(data["scores"]) or data.get("msg") != cb.message.message_id:
         return  # stale button
-    if callback_data.kind == "shift":
-        await state.update_data(start=clamp_window(callback_data.value))
-        return await render_discipline(cb.message, state)
+    level = max(MIN_LEVEL, min(MAX_LEVEL, callback_data.value))
+    if callback_data.kind == "show":
+        await state.update_data(level=level)
+        return await render_discipline(cb.message, state, lang)
 
-    value = callback_data.value if callback_data.kind == "level" else None
-    scores = data["scores"] + [value]
-    uid, target = cb.from_user.id, data["target"]
-    center = data["center"]
-    if target == uid and value is not None:
-        center = value  # self-rating: next discipline centers on the previous answer
+    # choose: save the level and open the next discipline at it; skip: keep the shown level
+    scores = data["scores"] + [level if callback_data.kind == "choose" else None]
     if len(scores) < len(DISCIPLINES):
-        await state.update_data(scores=scores, center=center, start=window_start(center))
-        return await render_discipline(cb.message, state)
+        await state.update_data(scores=scores, level=level)
+        return await render_discipline(cb.message, state, lang)
 
     await bot.edit_message_reply_markup(chat_id=cb.message.chat.id, message_id=data["msg"], reply_markup=None)
-    if target == uid:
-        await finish_self_rating(cb.message, state, uid, scores, bot)
+    uid = cb.from_user.id
+    if data["self"]:
+        await finish_self_rating(cb.message, state, uid, scores, bot, tr, lang)
     else:
-        await finish_peer_rating(cb.message, state, uid, target, scores, data["name"])
+        await finish_peer_rating(cb.message, state, uid, data["target"], scores, data["name"], tr)
 
 
-async def finish_self_rating(message: Message, state: FSMContext, uid: int, scores: list, bot: Bot):
+async def finish_self_rating(message: Message, state: FSMContext, uid: int, scores: list, bot: Bot, tr: Tr,
+                             lang: str):
     if not db.save_rating(uid, uid, scores):
-        await message.answer(T.SELF_RATE_REQUIRED)
-        return await begin_rating(message, state, uid, uid, center=SELF_START_CENTER, header=[])
+        await message.answer(tr("SELF_RATE_REQUIRED"))
+        return await begin_rating(message, state, lang, target=uid, is_self=True, header=[], name="")
     r = live_levels()[uid]
     shown = await nightly.set_tag(bot, GROUP_ID, uid, r.tag)
     if shown:
         db.set_tag_shown(uid, r.tag)
-    await message.answer((T.SELF_RATE_DONE if shown else T.SELF_RATE_DONE_NO_TAG).format(tag=html.escape(r.tag)))
+    await message.answer(tr("SELF_RATE_DONE" if shown else "SELF_RATE_DONE_NO_TAG", tag=html.escape(r.tag)))
     await state.clear()
-    await show_menu(message, uid)
+    await show_menu(message, uid, tr)
 
 
 async def finish_peer_rating(message: Message, state: FSMContext, uid: int, target: int, scores: list,
-                             name: str):
+                             name: str, tr: Tr):
     await state.clear()
     if db.player(target) is None or db.together(uid, target)[0] == 0:
-        return await message.answer(T.NOT_RATEABLE, reply_markup=home_kb())
+        return await message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
     if not db.save_rating(target, uid, scores):
-        return await message.answer(T.NOTHING_SAVED, reply_markup=menu_kb(uid))
-    await message.answer(T.RATING_SAVED.format(name=html.escape(name)), reply_markup=menu_kb(uid))
+        return await message.answer(tr("NOTHING_SAVED"), reply_markup=menu_kb(uid, tr))
+    await message.answer(tr("RATING_SAVED", name=html.escape(name)), reply_markup=menu_kb(uid, tr))
 
 
 # --- my stats (README §10) -------------------------------------------------------
 @router.callback_query(Menu.filter(F.action == "stats"))
-async def on_stats(cb: CallbackQuery):
+async def on_stats(cb: CallbackQuery, tr: Tr, lang: str):
     await cb.answer()
     uid = cb.from_user.id
     if not ready(uid) or db.peer_count(uid) < STATS_MIN_PEERS:
-        return await cb.message.answer(T.STATS_LOCKED.format(n=STATS_MIN_PEERS), reply_markup=home_kb())
+        return await cb.message.answer(tr("STATS_LOCKED", n=STATS_MIN_PEERS), reply_markup=home_kb(tr))
     r = live_levels()[uid]
-    disc = "\n".join(f"{T.DISCIPLINE_NAMES[k]}: {r.disciplines[k]:.1f}" if k in r.disciplines
-                     else f"{T.DISCIPLINE_NAMES[k]}: –" for k in DISCIPLINES)
-    games = "\n".join(f"{' '.join(fmt_local(g['start_at']))} · {g['n']} players"
-                      for g in db.recent_games(uid)) or "–"
-    await cb.message.answer(T.STATS.format(level=r.level, tag=html.escape(r.tag), disciplines=disc,
-                                           received=db.peer_count(uid), given=db.given_count(uid),
-                                           games=games), reply_markup=home_kb())
+    disc = "\n".join(f"{T.discipline(lang, k)}: " + (f"{r.disciplines[k]:.1f}" if k in r.disciplines else "–")
+                     for k in DISCIPLINES)
+    games = "\n".join(tr("STATS_GAME", date=d, time=hm, n=g["n"])
+                      for g in db.recent_games(uid) for d, hm in [fmt_local(g["start_at"])]) or "–"
+    await cb.message.answer(tr("STATS", level=f"{r.level:.1f}", tag=html.escape(r.tag), disciplines=disc,
+                               received=db.peer_count(uid), given=db.given_count(uid), games=games),
+                            reply_markup=home_kb(tr))
 
 
 # --- revoke (README §11) ---------------------------------------------------------
 @router.callback_query(Menu.filter(F.action == "revoke"))
-async def on_revoke(cb: CallbackQuery):
+async def on_revoke(cb: CallbackQuery, tr: Tr):
     await cb.answer()
-    await cb.message.answer(T.REVOKE_ASK, reply_markup=keyboard([[
-        (T.BTN_REVOKE_YES, Menu(action="revoke_yes")), (T.BTN_CANCEL, Menu(action="home"))]]))
+    await cb.message.answer(tr("REVOKE_ASK"), reply_markup=keyboard([[
+        (tr("BTN_REVOKE_YES"), Menu(action="revoke_yes")), (tr("BTN_CANCEL"), Menu(action="home"))]]))
 
 
 @router.callback_query(Menu.filter(F.action == "revoke_yes"))
-async def on_revoke_yes(cb: CallbackQuery, state: FSMContext, bot: Bot):
+async def on_revoke_yes(cb: CallbackQuery, state: FSMContext, bot: Bot, tr: Tr):
     await cb.answer()
     await state.clear()
     await cb.message.edit_reply_markup(reply_markup=None)
     await forget_user(bot, cb.from_user.id)
-    await cb.message.answer(T.REVOKED)
+    await cb.message.answer(tr("REVOKED"))
 
 
 @router.chat_member(ChatMemberUpdatedFilter(member_status_changed=LEAVE_TRANSITION))
@@ -593,31 +644,41 @@ async def cmd_export(message: Message):
 
 # --- fallbacks -------------------------------------------------------------------
 @router.callback_query(Menu.filter(F.action == "home"))
-async def on_home(cb: CallbackQuery, state: FSMContext):
+async def on_home(cb: CallbackQuery, state: FSMContext, tr: Tr):
     await cb.answer()
     await state.clear()
     if ready(cb.from_user.id):
-        await show_menu(cb.message, cb.from_user.id)
+        await show_menu(cb.message, cb.from_user.id, tr)
     else:
-        await cb.message.answer(T.EXPIRED)
+        await cb.message.answer(tr("EXPIRED"))
 
 
 @router.callback_query()
-async def on_stale(cb: CallbackQuery):
-    await cb.answer(T.EXPIRED, show_alert=True)
+async def on_stale(cb: CallbackQuery, tr: Tr):
+    await cb.answer(tr("EXPIRED"), show_alert=True)
 
 
 @router.message()
-async def on_other(message: Message, state: FSMContext):
+async def on_other(message: Message, state: FSMContext, tr: Tr):
     uid = message.from_user.id
     if ready(uid):
         await state.clear()
-        await show_menu(message, uid)
+        await show_menu(message, uid, tr)
     else:
-        await message.answer("Send /start to begin.")
+        await message.answer(tr("START_HINT"))
 
 
 # --- entry point -----------------------------------------------------------------
+async def set_commands(bot: Bot) -> None:
+    """The /start description in each language (English is the default for everyone else)."""
+    for lang in T.LANGS:
+        try:
+            await bot.set_my_commands([BotCommand(command="start", description=T.t(lang, "CMD_START"))],
+                                      language_code=None if lang == T.DEFAULT else lang)
+        except TelegramAPIError as e:
+            log.warning("setMyCommands(%s) failed: %s", lang, e)
+
+
 async def main():
     global db
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -629,6 +690,7 @@ async def main():
     dp.message.outer_middleware(MembersOnly())
     dp.callback_query.outer_middleware(MembersOnly())
     dp.include_router(router)
+    await set_commands(bot)
     asyncio.create_task(nightly.loop(bot, db, GROUP_ID))
     log.info("starting polling as @%s", (await bot.me()).username)
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

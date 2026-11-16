@@ -1,0 +1,117 @@
+# UI strings: Latvian
+LANG_NAME: "🇱🇻 Latviešu"
+CMD_START: "Atvērt izvēlni"
+
+DISCIPLINES:
+  serving: Servēšana
+  serve_receive: Servju pieņemšana
+  setting: Piespēle
+  attacking: Uzbrukums
+  blocking: Bloķēšana
+  defense: Aizsardzība
+
+NET_NOTE: "Abu dzimumu spēlētāji jāvērtē pēc spēlēm ar standarta vīriešu tīkla augstumu 2,43 m."
+NOT_MEMBER: "Šis bots darbojas tikai grupas dalībniekiem."
+START_HINT: "Nosūtiet /start, lai sāktu."
+PLAYER: "Spēlētājs"
+
+WELCOME: |-
+  🏐 <b>Volejbola līmeņa bots</b>
+
+  Mūsu grupas spēlētāji pēc kopīgām spēlēm novērtē cits cita prasmes. Jūsu līmenis (0.0–6.0) tiek rādīts kā birka blakus jūsu vārdam grupā.
+
+  • Vērtējumi ir anonīmi: neviens neredz, kurš ko novērtēja.
+  • Jūsu vārds netiek saglabāts. Tiek glabāts tikai jūsu Telegram ID, valoda, vērtējumi un spēles, kurās piedalījāties.
+  • Jebkurā brīdī varat atsaukt piekrišanu un dzēst visus savus datus.
+
+  Vai piekrītat piedalīties?
+BTN_AGREE: "Piekrītu"
+BTN_DECLINE: "Nē, paldies"
+DECLINED: "Labi. Ja pārdomāsiet, nosūtiet /start."
+LANG_SET: "Valoda: latviešu."
+
+SELF_RATE_INTRO: |-
+  Vispirms godīgi novērtējiet sevi 6 spēles elementos. Tas būs jūsu sākuma līmenis, līdz jūs novērtēs citi spēlētāji.
+
+  Abu dzimumu spēlētāji jāvērtē pēc spēlēm ar standarta vīriešu tīkla augstumu 2,43 m.
+SELF_RATE_DONE: "Paldies! Jūsu sākuma birka <b>{tag}</b> tagad redzama grupā."
+SELF_RATE_DONE_NO_TAG: "Paldies! Jūsu sākuma līmenis ir <b>{tag}</b>. Telegram neļauj piešķirt birkas grupas administratoriem un īpašniekam, tāpēc tā netiks rādīta blakus jūsu vārdam."
+SELF_RATE_REQUIRED: "Lūdzu, novērtējiet sevi vismaz vienā elementā. Mēģināsim vēlreiz."
+
+MENU: "Ko vēlaties darīt?"
+BTN_SUBMIT: "🏐 Pievienot spēli"
+BTN_RATE: "⭐ Novērtēt spēlētāju"
+BTN_STATS: "📊 Mana statistika"
+BTN_LANGUAGE: "🌐 Valoda"
+BTN_REVOKE: "🗑 Atsaukt piekrišanu un dzēst manus datus"
+BTN_MENU: "« Izvēlne"
+
+ASK_GAME_TIME: "Ievadiet spēles <b>oficiālo / izziņoto</b> sākuma laiku (piemēram, <code>08.11 19:00</code> vai <code>08.11.2026 19:00</code>)."
+BAD_TIME: "Neizdevās nolasīt. Lūdzu, izmantojiet formātu <code>08.11 19:00</code>."
+FUTURE_TIME: "Spēlei jābūt pagātnē. Pievienojiet to pēc tās sākuma."
+
+PICK_PLAYERS: |-
+  Kas spēlēja <b>{date} plkst. {time}</b>?
+  Atzīmējiet vismaz {min} spēlētājus, arī sevi, ja spēlējāt. (lapa {page}/{pages})
+BTN_DONE: "✔ Gatavs (izvēlēti: {n})"
+NEED_MIN: "Izvēlieties vismaz {min} spēlētājus."
+GAME_EXISTS: |-
+  Spēle <b>{date} plkst. {time}</b> jau ir pievienota, tajā spēlēja:
+  {existing}
+
+  Tiks pievienoti: {new}
+
+  Apstiprināt dalību spēlē {date} plkst. {time}?
+ALL_ALREADY_IN: "Visi izvēlētie spēlētāji jau ir spēlē {date} plkst. {time}."
+BTN_SUBMIT_PARTICIPATION: "Apstiprināt"
+BTN_CANCEL: "Atcelt"
+GAME_SAVED: "Saglabāts. Spēlē {date} plkst. {time} ir {n} spēlētāji. Novērtējiet komandas biedrus, kad esat gatavs."
+SKIPPED_CLASH: "Nav pievienoti (jau ir citā spēlē stundas robežās): {names}"
+SKIPPED_FULL: "Nav pievienoti (spēle ir pilna): {names}"
+BTN_RATE_PLAYERS: "⭐ Novērtēt spēlētājus"
+CANCELLED: "Atcelts."
+
+NO_CANDIDATES: "Pagaidām nav neviena, ko novērtēt. Spēlētājus var novērtēt pēc kopīgas spēles, kurā piedalījās vismaz 4 spēlētāji. Pievienojiet savas spēles izvēlnē."
+CANDIDATES_TOP: "Jūs spēlējāt kopā ar šiem spēlētājiem, un viņiem ļoti vajag jūsu vērtējumu. Lūdzu, veltiet dažas minūtes, lai viņus novērtētu."
+CANDIDATES_ALL: "Visi spēlētāji, kurus varat novērtēt (lapa {page}/{pages}):"
+BTN_SHOW_ALL: "Rādīt visus"
+NOT_RATEABLE: "Novērtēt var tikai spēlētājus, ar kuriem esat spēlējis ieskaitītā spēlē."
+
+RATING_HEADER: "Vērtējums: {name}"
+RATING_INFO: "Kopīgas spēles: {games} · pēdējā: {ago}"
+DISCIPLINE_STEP: "{discipline} ({step}/6)"
+LEVEL: "{n}. līmenis"
+WHICH_LEVEL: "Kurš līmenis vislabāk atbilst spēlētājam {name}?"
+WHICH_LEVEL_SELF: "Kurš līmenis vislabāk atbilst jums?"
+BTN_CHOOSE: "✔ Izvēlēties {n}"
+BTN_CANT_JUDGE: "Nevaru novērtēt"
+NOTHING_SAVED: "Nekas netika saglabāts."
+RATING_SAVED: "Paldies par spēlētāja {name} novērtējumu. Vērtējums ir saglabāts un drīz tiks ņemts vērā. Līmeņi tiek pārrēķināti katru nakti."
+EXPIRED: "Šis ekrāns vairs nav aktuāls. Lūdzu, sāciet no jauna izvēlnē."
+
+STATS: |-
+  📊 <b>Jūsu statistika</b>
+
+  Līmenis: <b>{level}</b> (birka <code>{tag}</code>)
+  {disciplines}
+
+  Saņemtie vērtējumi no spēlētājiem: {received}
+  Doti vērtējumi: {given}
+
+  <b>Pēdējās spēles</b>
+  {games}
+STATS_GAME: "{date} {time} · spēlētāji: {n}"
+STATS_LOCKED: "Statistika parādīsies, kad jūs būs novērtējuši vismaz {n} citi spēlētāji."
+
+REVOKE_ASK: "Vai esat pārliecināts? Tiks dzēsti visi jūsu dotie un saņemtie vērtējumi, spēļu vēsture un birka. Šo darbību nevar atsaukt."
+BTN_REVOKE_YES: "Jā, dzēst visu"
+REVOKED: "Gatavs. Visi jūsu dati ir dzēsti. Nosūtiet /start, ja vēlaties atgriezties."
+
+AGO_TODAY: "šodien"
+AGO_YESTERDAY: "vakar"
+AGO_DAYS:
+  one: "pirms {n} dienas"
+  other: "pirms {n} dienām"
+AGO_MONTHS:
+  one: "pirms {n} mēneša"
+  other: "pirms {n} mēnešiem"

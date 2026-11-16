@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS players (
   telegram_id  INTEGER PRIMARY KEY,
   consent_at   TEXT NOT NULL,
   level        REAL,
-  tag_shown    TEXT
+  tag_shown    TEXT,
+  lang         TEXT NOT NULL DEFAULT 'en'   -- UI language: en, ru, lv
 );
 CREATE TABLE IF NOT EXISTS games (
   id           INTEGER PRIMARY KEY,
@@ -87,6 +88,13 @@ class DB:
         if path != ":memory:":
             self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Bring databases created by older versions up to the current schema."""
+        cols = {r["name"] for r in self.q("PRAGMA table_info(players)")}
+        if "lang" not in cols:
+            self.conn.execute("ALTER TABLE players ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
 
     def q(self, sql: str, *args) -> list[sqlite3.Row]:
         return self.conn.execute(sql, args).fetchall()
@@ -100,9 +108,12 @@ class DB:
         return _Tx(self.conn)
 
     # --- players -------------------------------------------------------------
-    def add_player(self, uid: int) -> None:
-        self.conn.execute("INSERT OR IGNORE INTO players (telegram_id, consent_at) VALUES (?, ?)",
-                          (uid, iso(now())))
+    def add_player(self, uid: int, lang: str = "en") -> None:
+        self.conn.execute("INSERT OR IGNORE INTO players (telegram_id, consent_at, lang) VALUES (?, ?, ?)",
+                          (uid, iso(now()), lang))
+
+    def set_lang(self, uid: int, lang: str) -> None:
+        self.conn.execute("UPDATE players SET lang = ? WHERE telegram_id = ?", (lang, uid))
 
     def player(self, uid: int) -> sqlite3.Row | None:
         rows = self.q("SELECT * FROM players WHERE telegram_id = ?", uid)

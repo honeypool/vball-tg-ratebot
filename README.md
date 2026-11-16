@@ -25,27 +25,27 @@ Fill in `.env` with the **test** bot token, the test group ID and your Telegram 
 | What | Command |
 |---|---|
 | Automated tests | `.\.venv\Scripts\python -m pytest` |
-| Check Telegram features | `.\.venv\Scripts\python spike.py <your_id> [<member_id>]` |
 | Run the bot | `.\.venv\Scripts\python bot.py` (stop with Ctrl+C) |
 | Recalculate levels and tags now | `.\.venv\Scripts\python nightly.py --once` |
 
-`spike.py` sends you the real rating screen and edits it in place. If `<member_id>` is given, it also sets that member's tag to `[~~2.5]` for 20 seconds. Use a regular member, because Telegram does not allow tags for the group owner or admins.
+Telegram does not allow tags for the group owner or admins, so test tags with a regular member.
 
 Run only one `bot.py` per token at a time. A second copy, on this PC or on the server, makes Telegram reject the first one's updates.
 
 ### Manual checklist (test bot, at least 4 people in the test group)
 
 1. Someone outside the group gets "This bot only works for members of the group".
-2. Consent, then self-rate. The tag `[~~X.X]` appears in the group (not for the owner or admins).
-3. Submit a game with 3 players selected: **Done** refuses. Submit it with 4: the game is saved.
-4. Submit the same game 30 minutes later with one shared player: the bot offers to add the new players to the existing game and creates nothing.
-5. A player already in a 19:00 game is skipped when added to a 19:45 game.
-6. **Rate a player** lists only people you played a counting game (4+ players) with.
-7. On the rating screen, levels show as 0–6 and ◀ / ▶ stay within 0–6. Choosing "Can't judge" six times saves nothing.
-8. Run `nightly.py --once`: the logs show tags updated only where the text changed.
-9. **My stats** is hidden with 2 peer ratings and shown with 3.
-10. `/export` from a non-admin gets no response. From the admin, it returns a zip.
-11. Revoke consent, or leave the group: the tag disappears and the user's data is gone (check `/export`).
+2. `/start` shows the language choice (English / Русский / Latviešu). After that, everything (consent text, menu, rating screen, criteria) is in the chosen language. **🌐 Language** in the menu changes it later.
+3. Consent, then self-rate. The rating screen shows one level at a time and starts at level 0. ◀ / ▶ change the level in the same message. After **✔ Choose N**, the next discipline opens at level N. The tag `[~~X.X]` appears in the group (not for the owner or admins).
+4. Submit a game with 3 players selected: **Done** refuses. Submit it with 4: the game is saved.
+5. Submit the same game 30 minutes later with one shared player: the bot offers to add the new players to the existing game and creates nothing.
+6. A player already in a 19:00 game is skipped when added to a 19:45 game.
+7. **Rate a player** lists only people you played a counting game (4+ players) with.
+8. On the rating screen, ◀ is hidden at level 0 and ▶ at level 6. Choosing "Can't judge" six times saves nothing.
+9. Run `nightly.py --once`: the logs show tags updated only where the text changed.
+10. **My stats** is hidden with 2 peer ratings and shown with 3.
+11. `/export` from a non-admin gets no response. From the admin, it returns a zip.
+12. Revoke consent, or leave the group: the tag disappears and the user's data is gone (check `/export`).
 
 ---
 
@@ -65,10 +65,12 @@ bot.py      handlers, menus, conversation flows
 db.py       schema + all SQL queries
 rating.py   compute_levels(): pure math, no DB or Telegram code
 nightly.py  nightly recalculation, tag updates, CSV export
-texts.py    all UI strings; criteria come from criteria.en.yaml
+texts.py    loads the translations below; t(lang, key), criteria(), ago()
+locales/{en,ru,lv}.yaml     all UI strings per language
+criteria.{en,ru,lv}.yaml    level criteria per language
 ```
 
-UI language: English only.
+UI languages: **English, Russian, Latvian.** `en` is the reference: the other locale files must have the same keys and `{placeholders}` (a test checks this). In all three criteria files, the original division codes are replaced with level numbers (B = 1, BB = 2–3, A = 4–5, AA = 6).
 
 ## 2. Telegram setup and permissions
 
@@ -81,17 +83,18 @@ UI language: English only.
 
 ## 3. Privacy
 
-- Stored per user: Telegram ID, consent time, ratings, game participation. **Names are not stored.** When a screen needs a name, fetch it live with `getChatMember` (`first_name`, plus `@username` if present).
+- Stored per user: Telegram ID, consent time, UI language, ratings, game participation. **Names are not stored.** When a screen needs a name, fetch it live with `getChatMember` (`first_name`, plus `@username` if present).
 - Game records contain only the start time and the participants.
 - If the database leaks, the most sensitive information is who played with whom.
 
 ## 4. Onboarding
 
 1. The user opens the bot in private chat. The bot checks the user is a member of `GROUP_ID`. If not, it replies "This bot only works for members of the group" and stops.
-2. The bot shows the description and asks for consent: **[I agree] / [No thanks]**. Consent is recorded as `consent_at`.
-3. **Self-rating** (required before anything else): the same 6-discipline flow as rating someone else (§7). It is saved as a rating where `rater = player`.
-4. **Right after the self-rating, set the tag** `[~~X.X]` (see §9).
-5. Show the main menu.
+2. **Language**: the bot asks "Choose language / Выберите язык / Izvēlieties valodu" with English / Русский / Latviešu buttons. Before consent the choice is kept only in memory. It is stored with the player on consent. Messages to unknown users (e.g. "only for members") use the Telegram app language.
+3. The bot shows the description and asks for consent: **[I agree] / [No thanks]**. Consent is recorded as `consent_at`.
+4. **Self-rating** (required before anything else): the same 6-discipline flow as rating someone else (§7). It is saved as a rating where `rater = player`.
+5. **Right after the self-rating, set the tag** `[~~X.X]` (see §9).
+6. Show the main menu.
 
 Users who have not consented never get a tag and can't be rated.
 
@@ -100,7 +103,8 @@ Users who have not consented never get a tag and can't be rated.
 1. Submit a game
 2. Rate a player
 3. My stats (only shown with ≥3 peer ratings received)
-4. Revoke consent and delete my data
+4. Language
+5. Revoke consent and delete my data
 
 Admin only: `/export`.
 
@@ -142,9 +146,9 @@ Show the **top 5**, with "You had a chance to play with these players who really
 
 1. Header: player name, games played together, time since the last game together.
 2. Ask the 6 disciplines one at a time: Serving, Serve receive, Setting, Attacking, Blocking, Defense.
-3. For each discipline, send one **rich message** (`sendRichMessage`) with a table of the **5 levels nearest the player's current level**. Center on the level rounded to an integer and clamp to 0–6: level 0.4 shows levels 0–4, 3.2 shows 1–5, 5.8 shows 2–6. Criteria text comes from `criteria.en.yaml`. Levels are shown only as numbers 0–6, with no division codes (A, BB…). Every screen ends with the note: "Players of both genders should be rated on games with standard male net height of 2.43m." No classic-HTML fallback.
-4. Buttons: one per shown level, **[◀]** / **[▶]** to shift the window by one level (within 0–6), and **[Can't judge]**, which saves NULL for that discipline.
-5. Self-rating: there is no current level yet, so the first discipline opens centered on 3. Each later discipline opens centered on the answer given for the previous one.
+3. For each discipline, send one short **rich message** (`sendRichMessage`) showing **one discipline and one level's criteria**, so nothing needs scrolling: the discipline and step (`Serve receive (2/6)`), `Level N`, that level's criteria text in the user's language, the question, and a footer note: "Players of both genders should be rated on games with standard male net height of 2.43m." Levels are shown only as numbers 0–6, with no division codes (A, BB…). No classic-HTML fallback.
+4. Buttons: **[◀] [✔ Choose N] [▶]** and **[Can't judge]**. ◀ / ▶ show the previous / next level by editing the same message. ◀ is hidden at 0 and ▶ at 6. **✔ Choose N** saves level N for this discipline. **Can't judge** saves NULL.
+5. The first discipline opens at **level 0** (self-rating and peer rating alike). Each later discipline opens at the level chosen for the previous one. After "Can't judge", it stays at the level that was shown.
 6. At least one discipline must be answered. If all six are "Can't judge", save nothing and show "Nothing was saved."
 7. Saving: **one rating per (player, rater) pair.** Rating again overwrites the scores and sets `updated_at = now`.
 8. Confirmation: "Thank you for rating {name}. Your rating is saved and will be taken into account soon. Levels are recalculated every night."
@@ -247,7 +251,8 @@ CREATE TABLE players (
   telegram_id  INTEGER PRIMARY KEY,
   consent_at   TEXT NOT NULL,          -- UTC ISO
   level        REAL,                   -- last nightly overall level, NULL before first run
-  tag_shown    TEXT                    -- tag currently set in the group
+  tag_shown    TEXT,                   -- tag currently set in the group
+  lang         TEXT NOT NULL DEFAULT 'en'  -- UI language: en, ru, lv
 );
 
 CREATE TABLE games (
@@ -292,8 +297,9 @@ CREATE TABLE ratings (
 6. A user cannot rate someone they have no counting game with.
 7. Rating the same player twice leaves one row with the new scores and a new `updated_at`.
 8. Choosing "Can't judge" for all 6 disciplines saves nothing.
-9. The rating window for a player at 0.4 shows levels 0–4, and ◀ / ▶ shift it within 0–6.
+9. The rating screen shows one level's criteria and starts at level 0. ◀ / ▶ move within 0–6. The next discipline opens at the last chosen level.
 10. Revoking consent removes the user's ratings (given and received), game memberships and tag. The nightly run then recalculates the affected players.
 11. The nightly run calls `setChatMemberTag` only for players whose tag text changed.
 12. "My stats" is hidden with 2 peer ratings and shown with 3.
 13. `/export` from a non-admin gets no response.
+14. Every UI string and every criteria text exists in English, Russian and Latvian, with the same placeholders.
