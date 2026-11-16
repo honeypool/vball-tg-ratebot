@@ -3,7 +3,7 @@
 
 meta:
   language: lv
-  version: "1.0"
+  version: "1.1"
   notes:
     credit: >-
       Translated from criteria.en.yaml, which is taken from https://phillyvolleyball.org/.
@@ -13,7 +13,7 @@ levels:
   - level: 0
     criteria:
       attacking: >-
-        Spēlētājam ir grūti pārsist bumbu pāri tīklam un/vai iesist to laukumā.
+        Spēlētājam ir grūti pārsist bumbu pāri tīklam un/vai trāpīt laukumā.
       blocking: >-
         Spēlētājs nevar pacelt rokas līdz tīkla augšmalai vai nevar droši
         piezemēties savā laukuma pusē, nepieskaroties tīklam vai citam
@@ -21,12 +21,11 @@ levels:
       defense: >-
         Spēlētājam ir grūti izcelt bumbu gaisā, kad tā tiek sista viņa virzienā.
       serve_receive: >-
-        Spēlētājam ir grūti pieņemt bumbu.
+        Spēlētājam ir grūti uzņemt servi.
       serving: >-
         Spēlētājam ir grūti izpildīt noteikumiem atbilstošu servi.
       setting: >-
-        Spēlētājam ir grūti precīzi piespēlēt bumbu komandas biedriem
-        uzbrukumam.
+        Spēlētājam ir grūti precīzi piespēlēt bumbu gremdei.
 
   - level: 1
     criteria:
@@ -38,186 +37,189 @@ levels:
         Spēlētājs var veidot individuālu bloku ar rokām virs tīkla vai mīksto
         bloku pie tīkla augšmalas un droši piezemēties savā laukuma pusē.
       defense: >-
-        Spēlētājs vēl mācās nolasīt uzbrucējus, bet spēj izcelt viņam raidītus
-        sitienus vai noraidītas bumbas un virzīt bumbu kopumā uz augšu un
-        laukuma priekšējās zonas virzienā.
+        Spēlētājs vēl mācās sekot uzbrucēja darbībai, bet spēj uzņemt uz viņu
+        raidītas vai no bloka atlēkušas bumbas un piespēlēt tās uz augšu un
+        laukuma priekšējās daļas virzienā.
       serve_receive: >-
-        Spēlētājs var pieņemt lēnu servi, virzot bumbu tīkla / laukuma
-        priekšējās puses virzienā.
+        Spēlētājs var uzņemt lēnu servi, piespēlējot bumbu uz tīklu / laukuma
+        priekšējo daļu.
       serving: >-
-        Spēlētājs var izpildīt noteikumiem atbilstošu servi (no apakšas vai no
-        augšas) un stabili ievadīt bumbu spēlē.
+        Spēlētājs var izpildīt noteikumiem atbilstošu servi (apakšējo vai
+        augšējo) un stabili ievadīt bumbu spēlē.
       setting: >-
-        Kad bumba pieņemta uz laukuma priekšējo daļu, spēlētājs var stabili
-        piespēlēt komandas biedram uzbrukumam ērtu bumbu — ar apakšējo vai
-        augšējo piespēli.
+        Ja pirmā piespēle nonāk laukuma priekšējā daļā, spēlētājs var stabili
+        piespēlēt līdzspēlētājam ērtu bumbu gremdei — ar apakšējo vai augšējo
+        piespēli.
 
   - level: 2
     criteria:
       attacking: >-
-        Spēlētājs var uzbrukt bumbai ar sitienu lēcienā vai spēcīgu sitienu bez
-        lēciena. Zina, kur atkāpties un kā pārvietoties, lai sagatavotos
-        ieskrējienam un sitienam, un var nedaudz pielāgoties neprecīzai
-        piespēlei. Sitieniem var pietrūkt spēka, bet tie parasti trāpa laukumā
-        un tā, ka 2.–3. līmeņa spēlētājiem tos ir grūti atvairīt.
+        Spēlētājs var izpildīt gremdi pēc ieskrējiena vai spēcīgu sitienu no
+        vietas. Zina, kur atkāpties no tīkla un kā izvēlēties vietu pirms
+        ieskrējiena gremdei, un var nedaudz pielāgoties neprecīzai piespēlei.
+        Gremdēm var pietrūkt spēka, bet tās parasti trāpa laukumā un tā, ka
+        2.–3. līmeņa spēlētājiem tās ir grūti uzņemt.
       blocking: >-
         Spēlētājs var pacelt rokas virs tīkla un traucēt pretinieka uzbrukumu,
-        pieskaroties bumbai vai novirzot to saviem komandas biedriem. Dažreiz
-        veido dubultbloku ar blakus esošo spēlētāju. Prot droši izlēkt un
-        piezemēties, nepieskaroties tīklam.
+        mīkstinot gremdi vai novirzot bumbu saviem aizsardzības spēlētājiem.
+        Dažreiz veido divspēlētāju bloku ar blakus esošo spēlētāju. Prot droši
+        atsperties un piezemēties, nepieskaroties tīklam.
       defense: >-
-        Spēlētājs labi orientējas laukumā un zina, kur pārvietoties, kad tiek
-        sists. Var izcelt vidēja spēka sitienus ar pieņemšanu ar apakšu vai no
-        augšas un pacelt bumbu augstu, lai komanda to varētu sasniegt. Saprot,
-        kur nostāties pamata pozīcijā aizsardzībā. Reti kļūdās, pieņemot vieglo
-        bumbu.
+        Spēlētājs labi orientējas laukumā un zina, kur pārvietoties, kad
+        pretinieks gremdē. Var uzņemt vidēja spēka gremdes ar apakšējo vai
+        augšējo piespēli un piespēlēt bumbu augstu, lai līdzspēlētāji to
+        varētu sasniegt. Zina savu vietu komandas aizsardzības sistēmā. Reti
+        kļūdās, uzņemot pāri tīklam vienkārši piespēlētu bumbu.
       serve_receive: >-
-        Spēlētājs stabili (70% gadījumu) pieņem vidēja ātruma servi tā, lai no
-        bumbas varētu izdarīt piespēli, — no augšas vai ar apakšu.
-        Piespēlētājam lielākajā daļā pieņemšanu ir vismaz 1 vienkāršs piespēles
-        variants. Kopumā saprot, kur nostāties servju pieņemšanā, bet
-        organizētākā sistēmā (5-1 vai 6-2) var būt vajadzīgi komandas biedru
-        norādījumi.
+        Spēlētājs stabili (70% gadījumu) uzņem vidēja ātruma servi tā, lai
+        varētu izdarīt otro piespēli, — ar augšējo vai apakšējo piespēli.
+        Cēlājam lielākajā daļā gadījumu ir vismaz 1 vienkāršs piespēles
+        variants. Kopumā zina savu vietu serves uzņemšanā, bet sarežģītākā
+        sistēmā (5-1 vai 6-2) var būt vajadzīgi līdzspēlētāju norādījumi.
       serving: >-
-        Spēlētājs stabili (70%) servē no augšas laukumā. Var servēt noteiktās
-        laukuma zonās, lai apgrūtinātu pretinieku pieņemšanu.
+        Spēlētājs stabili (70%) izpilda augšējo servi laukumā. Var servēt uz
+        noteiktām laukuma zonām, lai apgrūtinātu pretiniekam serves
+        uzņemšanu.
       setting: >-
-        Spēlētājs stabili piespēlē uzbrukumam ērtu bumbu malējam uzbrucējam un
-        centra spēlētājam no lielākās daļas priekšējās zonas un dažreiz
-        piespēlē atpakaļ. Pārliecinoši spēlē ar augšējo piespēli gandrīz bez
-        dubultpieskārieniem. Zina, kā pārvietoties laukumā, kad ir norīkotais
-        piespēlētājs (parasti sistēmā 4-2 vai 5-1).
+        Spēlētājs stabili piespēlē ērtu bumbu gremdei malējam uzbrucējam
+        un 3. zonā no lielākās daļas laukuma priekšējās daļas un dažreiz
+        piespēlē atmuguriski. Pārliecinoši izpilda augšējo piespēli gandrīz
+        bez dubultpieskārieniem. Zina, kā iziet pie tīkla, kad ir saspēles
+        vadītājs (parasti sistēmā 4-2 vai 5-1).
 
   - level: 3
     criteria:
       attacking: >-
-        Spēlētājs zina, kur atrasties laukumā uzbrukuma attīstības laikā, un
-        spēj lēcienā sist bumbu lejup. Atrod tukšās zonas aizsardzībā, un laba
-        piespēle pret 2.–3. līmeņa spēlētājiem parasti beidzas ar punktu. No
-        viņa negaida spēli bez kļūdām, bet uzbrukuma efektivitātei kopumā jābūt
-        pozitīvai.
+        Spēlētājs zina, kur atrasties laukumā uzbrukuma organizēšanas laikā,
+        un spēj lēcienā izpildīt gremdi lejup. Raida bumbu uz nenosegtām
+        laukuma vietām, un precīza piespēle pret 2.–3. līmeņa spēlētājiem
+        parasti beidzas ar izcīnītu punktu. No viņa negaida spēli bez kļūdām,
+        bet uzbrukuma efektivitātei kopumā jābūt pozitīvai.
       blocking: >-
-        Spēlētājs var pacelt rokas virs tīkla un pārnest tās pretinieka pusē,
-        atņemot pretiniekam daļu variantu. Labi izvēlas bloka brīdi un seko
-        pretinieku piespēlētājam un uzbrucējiem, veidojot dubultbloku ar
-        komandas biedriem.
+        Spēlētājs var pacelt rokas virs tīkla un pārnest tās pāri tīklam,
+        nosedzot daļu gremdes virzienu. Pareizi izvēlas laiku lēcienam, seko
+        pretinieka cēlājam un uzbrucējiem un veido divspēlētāju bloku ar
+        līdzspēlētājiem.
       defense: >-
-        Spēlētājs vienmēr zina, kur atrasties izspēles gaitā, kā sadalīt
-        laukumu un par ko atbild parastajā pamata aizsardzībā, un sazinās ar
-        komandas biedriem. Kad 2.–3. līmeņa spēlētāji sit viņa virzienā, viņš
-        parasti spēj izcelt bumbu uz augšu un priekšējā zonā / piespēlētāja
-        virzienā.
+        Spēlētājs vienmēr zina, kur atrasties izspēles gaitā, kuru laukuma
+        daļu sedz un par ko atbild komandas aizsardzības sistēmā, un sazinās
+        ar līdzspēlētājiem. Kad 2.–3. līmeņa spēlētāji uz viņu gremdē, viņš
+        parasti spēj uzņemt gremdi un piespēlēt bumbu uz laukuma priekšējo
+        daļu / cēlājam.
       serve_receive: >-
-        Spēlētājs stabili (70% gadījumu) pieņem 2.–3. līmeņa spēlētāju servi
-        mērķī, atstājot piespēlētājam vismaz 2 vienkāršus piespēles variantus.
-        Vienojas ar komandas biedriem par bumbām starp spēlētājiem un zina, kur
-        nostāties pieņemšanā sistēmās 5-1 un 6-2.
+        Spēlētājs stabili (70% gadījumu) precīzi uzņem 2.–3. līmeņa spēlētāju
+        servi, atstājot cēlājam vismaz 2 vienkāršus piespēles variantus.
+        Vienojas ar līdzspēlētājiem par servēm starp spēlētājiem un zina savu
+        vietu serves uzņemšanā sistēmās 5-1 un 6-2.
       serving: >-
-        Spēlētājs stabili (70%) servē izvēlētajā zonā. Pret 2.–3. līmeņa un
+        Spēlētājs stabili (70%) servē uz izvēlēto zonu. Pret 2.–3. līmeņa un
         dažreiz arī 4.–5. līmeņa spēlētājiem var servēt tā, ka apgrūtina
-        pieņemšanu vai dažreiz gūst tiešo punktu no servēšanas.
+        serves uzņemšanu vai dažreiz iegūst punktu ar servi.
       setting: >-
-        Spēlētājs no labas pieņemšanas precīzi piespēlē jebkuram priekšējās
-        līnijas uzbrucējam. Var piespēlēt kustībā un pielāgoties bumbai
-        lielākajā daļā laukuma zonu, lai dotu komandas biedriem uzbrukumam ērtu
-        bumbu, un vienojas ar uzbrucējiem par viņiem vajadzīgajām piespēlēm.
-        Prot vadīt spēli sistēmā 5-1 vai 6-2.
+        Spēlētājs no precīzas pirmās piespēles precīzi piespēlē bumbu gremdei
+        jebkuram pirmās līnijas uzbrucējam. Var piespēlēt kustībā un pēc
+        pārvietošanās lielākajā daļā laukuma zonu, lai dotu līdzspēlētājiem
+        ērtu bumbu gremdei, un vienojas ar uzbrucējiem par viņiem vajadzīgajām
+        piespēlēm. Var būt saspēles vadītājs sistēmā 5-1 vai 6-2.
 
   - level: 4
     criteria:
       attacking: >-
-        Spēlētājs var spēcīgi sist bumbu lejup. Prot pielāgoties neprecīzai
-        piespēlei un tik un tā droši sist ar spēku vai gudri izvēlētā zonā,
-        izsitot pretinieku no sistēmas. Kāju darbs ļauj pārvietoties pa laukumu
-        un veikt ieskrējienu ātrā uzbrukuma sistēmā. Pieņem gudrus lēmumus un
-        izmanto dažādus uzbrukuma variantus, lai gūtu punktus arī pret
-        dubultbloku. Uzbrukuma efektivitāte parasti ir vismaz 0,100.
+        Spēlētājs var izpildīt spēcīgu gremdi. Prot pielāgoties neprecīzai
+        piespēlei un tik un tā droši gremdēt ar spēku vai gudri izvēlētā zonā,
+        izjaucot pretinieka uzbrukuma organizāciju. Pārvietošanās ļauj
+        izpildīt ieskrējienu zemām un īsām piespēlēm uzbrukuma kombinācijās.
+        Pieņem gudrus lēmumus un izmanto dažādus gremdes veidus un māņu
+        sitienus, lai izcīnītu punktus arī pret divspēlētāju bloku. Uzbrukuma
+        efektivitāte parasti ir vismaz 0,100.
       blocking: >-
-        Spēlētājs var pacelt rokas virs tīkla un pārnest tās pretinieka pusē,
-        atņemot pretiniekam variantus un novirzot sitienus uz paredzētajām
-        aizsardzības zonām. Stabili noslēdz dubultbloku (vai trīskāršu bloku)
-        ar komandas biedriem. Bloks bieži dod pieskārienu bumbai un dažreiz arī
-        punktu.
+        Spēlētājs var pacelt rokas virs tīkla un pārnest tās pāri tīklam,
+        nosedzot galvenos gremdes virzienus un novirzot gremdes uz zonām, kur
+        atrodas aizsardzības spēlētāji. Stabili pieslēdzas līdzspēlētājiem
+        divspēlētāju (vai trīsspēlētāju) blokā. Bieži mīkstina gremdi un
+        dažreiz to nobloķē.
       defense: >-
-        Spēlētājs prot nolasīt spēli no bloka un paredzēt, kur tiks sists, lai
-        ieņemtu pozīciju bumbas izcelšanai pret 4.–5. līmeņa uzbrukumu ar
-        vairākiem uzbrucējiem. Laba aizsardzības tehnika un instinkts. Kad
-        tuvumā tiek noraidīta vai mīksti uzsista bumba, parasti labi izceļ to
-        uz piespēlētāju.
+        Spēlētājs prot izvēlēties vietu aiz sava bloka un paredzēt gremdes
+        virzienu, lai uzņemtu bumbu pret 4.–5. līmeņa uzbrukumu ar vairākiem
+        uzbrucējiem. Laba aizsardzības tehnika un reakcija. No bloka
+        atlēkušas vai tuvumā iemānītas bumbas parasti precīzi piespēlē
+        cēlājam.
       serve_receive: >-
-        Spēlētājs stabili (75% gadījumu) pieņem 4.–5. līmeņa spēlētāju servi
-        mērķī, atstājot piespēlētājam vismaz 2 vienkāršus piespēles variantus.
-        Reti zaudē tiešo punktu no servēšanas, un neprecīzas pieņemšanas
-        parasti vēl ir spēlējamas komandas biedriem.
+        Spēlētājs stabili (75% gadījumu) precīzi uzņem 4.–5. līmeņa spēlētāju
+        servi, atstājot cēlājam vismaz 2 vienkāršus piespēles variantus. Reti
+        zaudē punktu, uzņemot servi, un neprecīzi uzņemtas serves parasti vēl
+        ir spēlējamas līdzspēlētājiem.
       serving: >-
-        Pret 4.–5. līmeņa spēlētājiem var servēt tā, ka apgrūtina pieņemšanu
-        vai dažreiz gūst tiešo punktu no servēšanas. Var vairāk riskēt un
-        servēt agresīvāk, taču lielākoties bumbai jāpārlido pāri tīklam un
+        Pret 4.–5. līmeņa spēlētājiem var servēt tā, ka apgrūtina serves
+        uzņemšanu vai dažreiz iegūst punktu ar servi. Var vairāk riskēt un
+        servēt spēcīgāk, taču lielākoties bumbai jāpārlido pāri tīklam un
         jātrāpa laukumā.
       setting: >-
-        Spēlētājs var vadīt augsta līmeņa uzbrukumu, pielāgojoties pieņemšanai
-        jebkurā laukuma vietā. Prot izsludināt un izspēlēt konkrētas
-        kombinācijas ar uzbrucējiem. Piespēlē kustībā un pat no sliktas
-        pieņemšanas parasti spēj dot komandas biedriem uzbrukumam ērtu bumbu.
+        Spēlētājs var organizēt augsta līmeņa uzbrukumu, pielāgojoties pirmajai
+        piespēlei jebkurā laukuma vietā. Prot norunāt un izspēlēt uzbrukuma
+        kombinācijas ar uzbrucējiem. Piespēlē kustībā un pat no neprecīzas
+        pirmās piespēles parasti spēj dot līdzspēlētājiem ērtu bumbu gremdei.
 
   - level: 5
     criteria:
       attacking: >-
-        Spēlētājs stabili gūst punktus pret 4.–5. līmeņa spēlētājiem. Efektīvi
-        uzbrūk no priekšējās un aizmugurējās līnijas un gūst punktus arī no
-        neprecīzām piespēlēm. Viņam ir spēles izpratne un atlētiskums
-        sarežģītākam uzbrukumam ar iepriekš sagatavotām kombinācijām. Uzbrukuma
-        efektivitāte parasti ir vismaz 0,250.
+        Spēlētājs stabili izcīna punktus pret 4.–5. līmeņa spēlētājiem.
+        Efektīvi gremdē no pirmās un otrās līnijas un izcīna punktus arī no
+        neprecīzām piespēlēm. Viņam ir spēles izpratne un fiziskā
+        sagatavotība sarežģītām, iepriekš norunātām uzbrukuma kombinācijām.
+        Uzbrukuma efektivitāte parasti ir vismaz 0,250.
       blocking: >-
         Spēlētājs ātri pielāgojas uzbrukumam ar vairākiem spēcīgiem
-        uzbrucējiem, sekojot pretinieku piespēlētājam un uzbrucējiem. Bloks ir
-        pilnībā pārnests pretinieka pusē un rada spiedienu uz spēcīgiem
-        uzbrucējiem: pieskārieni, bloka punkti vai piespiestas kļūdas.
+        uzbrucējiem, sekojot pretinieka cēlājam un uzbrucējiem. Rokas blokā ir
+        pilnībā pārnestas pāri tīklam un rada spiedienu uz spēcīgiem
+        uzbrucējiem: mīkstina vai nobloķē gremdes, liek uzbrucējam kļūdīties.
       defense: >-
-        Spēlētājs nolasa spēcīgu uzbrucēju spēli un pielāgojas tai. Droši
-        nosedz savu atbildības zonu un spēj izcelt pat spēcīgāko uzbrucēju
-        sitienus, dodot komandas biedriem iespēju turpināt izspēli.
+        Spēlētājs atšifrē spēcīgu uzbrucēju darbību un tai pielāgojas. Droši
+        sedz savu laukuma daļu un spēj uzņemt pat spēcīgāko uzbrucēju
+        gremdes, dodot līdzspēlētājiem iespēju turpināt izspēli.
       serve_receive: >-
-        Spēlētājs stabili (85% gadījumu) pieņem 4.–5. līmeņa spēlētāju servi
-        mērķī, nodrošinot piespēlētājam visus 3 piespēles variantus. Reti zaudē
-        tiešo punktu no servēšanas, un arī neprecīzas pieņemšanas var pārvērst
-        uzbrukumā ārpus sistēmas.
+        Spēlētājs stabili (85% gadījumu) precīzi uzņem 4.–5. līmeņa spēlētāju
+        servi, nodrošinot cēlājam visus 3 piespēles variantus. Reti zaudē
+        punktu, uzņemot servi, un arī no neprecīzi uzņemtas serves komanda
+        spēj organizēt uzbrukumu.
       serving: >-
         Pret 4.–5. līmeņa spēlētājiem regulāri (80%) servē tā, ka apgrūtina
-        pieņemšanu. Bieži gūst tiešos punktus no servēšanas pret zemāka līmeņa
-        spēlētājiem.
+        serves uzņemšanu. Pret zemāka līmeņa spēlētājiem bieži iegūst punktus
+        ar servi.
       setting: >-
         Spēlētājam ir augsta piespēles tehnika no jebkuras laukuma vietas, un
-        viņš pieņem gudrus lēmumus. Notur komandu sistēmā arī no viduvējas
-        pieņemšanas un izspēlē kombinācijas, kas dod uzbrucējiem priekšrocību
-        pār bloku. Gandrīz ar katru pieskārienu uzlabo bumbu.
+        viņš pieņem gudrus lēmumus. Arī no viduvējas pirmās piespēles ļauj
+        komandai izspēlēt uzbrukuma kombinācijas, kas dod uzbrucējiem
+        priekšrocību pār bloku. Gandrīz ar katru pieskārienu uzlabo
+        līdzspēlētāja neprecīzo piespēli.
 
   - level: 6
     criteria:
       attacking: >-
-        Spēlētājs ir viens no galvenajiem punktu guvējiem augsta līmeņa
-        uzbrukumā. Ļoti atlētisks, pielāgojas pretinieku blokam un aizsardzībai
-        un gūst punktus ar ļoti augstu stabilitāti.
+        Spēlētājs ir viens no galvenajiem uzbrucējiem augsta līmeņa
+        uzbrukumā. Ļoti labi fiziski sagatavots, pielāgojas pretinieka blokam
+        un aizsardzībai un izcīna punktus ar ļoti augstu stabilitāti.
       blocking: >-
-        Spēlētājs nolasa 6. līmeņa uzbrukumu un pielāgojas tam, fiziski
-        piedaloties bloka sistēmā (kopīgi vai individuāli bloka punkti), vai
-        dominē pār 4.–5. līmeņa pretinieku uzbrukumu, gūstot vairākus bloka
-        punktus spēlē.
+        Spēlētājs atšifrē 6. līmeņa uzbrukumu un tam pielāgojas, aktīvi
+        piedaloties komandas bloķēšanas taktikā (nobloķē gremdes gan
+        vienspēlētāja, gan grupu blokā), vai dominē pār 4.–5. līmeņa
+        pretinieka uzbrukumu, vairākas reizes spēlē nobloķējot gremdes.
       defense: >-
-        Spēcīgs aizsardzības instinkts un atlētiskums ļauj spēlētājam atrasties
-        pareizajā vietā un izcelt bumbu pret visspēcīgāko uzbrukumu. Izceltā
-        bumba aiziet augstu un uz priekšējo zonu, kur piespēlētājam ir vairāki
-        varianti.
+        Laba reakcija, spēles izpratne un fiziskā sagatavotība ļauj
+        spēlētājam atrasties pareizajā vietā un uzņemt gremdes pat pret
+        visspēcīgāko uzbrukumu. Uzņemtā bumba lido augstu un uz laukuma
+        priekšējo daļu, kur cēlājam ir vairāki piespēles varianti.
       serve_receive: >-
-        Spēlētājs stabili (90% gadījumu) pieņem 6. līmeņa spēlētāju servi
-        mērķī. Reti zaudē tiešo punktu no servēšanas un gandrīz vienmēr dod
+        Spēlētājs stabili (90% gadījumu) precīzi uzņem 6. līmeņa spēlētāju
+        servi. Reti zaudē punktu, uzņemot servi, un gandrīz vienmēr dod
         komandai spēlējamu bumbu.
       serving: >-
-        Pret 6. līmeņa spēlētājiem var servēt tā, ka izsit pretinieku no
-        sistēmas. Regulāri gūst tiešos punktus no servēšanas pret zemāka līmeņa
-        spēlētājiem.
+        Pret 6. līmeņa spēlētājiem var servēt tā, ka izjauc pretinieka
+        uzbrukuma organizāciju. Pret zemāka līmeņa spēlētājiem regulāri
+        iegūst punktus ar servi.
       setting: >-
-        Spēlētājs var vadīt sarežģītu uzbrukumu un piespēlēt ar augstu
-        stabilitāti augstumā, attālumā un tempā. Pieņem gudrus lēmumus un
-        palīdz veidot kombinācijas, atbrīvojot uzbrucējus un dodot viņiem
-        priekšrocību pār 6. līmeņa bloku.
+        Spēlētājs var organizēt sarežģītu uzbrukumu un ar augstu stabilitāti
+        piespēlēt bumbu vajadzīgajā augstumā, attālumā un ātrumā. Pieņem
+        gudrus lēmumus un palīdz veidot uzbrukuma kombinācijas, kas ļauj
+        uzbrucējiem gremdēt bez bloka vai pret vienspēlētāja bloku pat pret
+        6. līmeņa bloķētājiem.
