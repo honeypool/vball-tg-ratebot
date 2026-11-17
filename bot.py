@@ -23,7 +23,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (BotCommand, BufferedInputFile, CallbackQuery, ChatMemberUpdated, InlineKeyboardButton,
                            InlineKeyboardMarkup, InputRichBlockBlockQuotation, InputRichBlockParagraph,
-                           InputRichMessage, Message)
+                           InputRichMessage, Message, RichTextBold)
 
 import nightly
 import texts as T
@@ -541,11 +541,11 @@ def discipline_screen(data: dict, lang: str) -> tuple[InputRichMessage, InlineKe
     step = len(data["scores"])
     key = DISCIPLINES[step]
     level = data["level"]
-    discipline = T.discipline(lang, key)
-    prompt = (tr("RATE_PROMPT_SELF", discipline=discipline, step=step + 1) if data["self"] else
-              tr("RATE_PROMPT", name=with_handle(data["name"]), discipline=discipline, step=step + 1))
+    prompt = tr("RATE_PROMPT_SELF") if data["self"] else tr("RATE_PROMPT", name=with_handle(data["name"]))
     blocks = [
         InputRichBlockParagraph(text=prompt),
+        InputRichBlockParagraph(text=RichTextBold(
+            text=tr("DISCIPLINE_STEP", discipline=T.discipline(lang, key), step=step + 1))),
         InputRichBlockBlockQuotation(blocks=[InputRichBlockParagraph(text=tr("LEVEL", n=level)),
                                              InputRichBlockParagraph(text=T.criteria(lang, level, key))]),
     ]

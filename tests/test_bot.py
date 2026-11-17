@@ -37,13 +37,19 @@ def buttons(kb):
 
 
 def quoted(rich):
-    return [b.text for b in rich.blocks[1].blocks]
+    return [b.text for b in rich.blocks[2].blocks]
+
+
+def heading(rich):
+    """Prompt line, then the discipline in bold on its own line."""
+    assert rich.blocks[1].text.type == "bold"
+    return rich.blocks[0].text, rich.blocks[1].text.text
 
 
 def test_first_discipline_shows_only_level_0():
     rich, kb = screen()
-    assert [b.type for b in rich.blocks] == ["paragraph", "blockquote"]
-    assert rich.blocks[0].text == "Please rate Anna (@anna) in Serving (1/6):"
+    assert [b.type for b in rich.blocks] == ["paragraph", "paragraph", "blockquote"]
+    assert heading(rich) == ("Please rate Anna (@anna) in:", "Serving (1/6)")
     assert quoted(rich) == ["Level 0:", T.criteria("en", 0, "serving")]   # one level only
     rows = buttons(kb)
     assert [t for t, _ in rows[0]] == ["Choose 0", "1▶"]                  # no ◀ at level 0
@@ -67,13 +73,13 @@ def test_top_level_and_step():
 
 def test_name_without_username():
     rich, _ = screen(name="Anna")
-    assert rich.blocks[0].text == "Please rate Anna in Serving (1/6):"
+    assert heading(rich)[0] == "Please rate Anna in:"
 
 
 def test_self_rating_prompt_and_translations():
     rich, _ = screen(lang="ru", self=True, name="", level=3)
-    assert rich.blocks[0].text == "Оцените себя в дисциплине «Подача» (1/6):"
+    assert heading(rich) == ("Оцените себя в дисциплине:", "Подача (1/6)")
     assert quoted(rich)[0] == "Уровень 3:"
     rich, kb = screen(lang="lv", level=2)
-    assert "Servēšana" in rich.blocks[0].text and quoted(rich)[0] == "2. līmenis:"
+    assert heading(rich)[1] == "Servēšana (1/6)" and quoted(rich)[0] == "2. līmenis:"
     assert buttons(kb)[1][0][0] == "Nevaru novērtēt (izlaist)"
