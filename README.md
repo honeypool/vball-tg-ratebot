@@ -144,10 +144,10 @@ Show the **top 5**, with "You had a chance to play with these players who really
 
 ### Rating screen
 
-1. Header: player name, games played together, time since the last game together.
+1. **Confirmation screen** after a player is picked: "You have selected {name} for rating. / Games together: N, last: {ago}. / Players of both genders should be rated on games with standard male net height of 2.43m. / If you are not sure about some particular skill - feel free to skip to the next discipline." Buttons **[BACK]** (back to the candidate list) and **[OK]** (start rating).
 2. Ask the 6 disciplines one at a time: Serving, Serve receive, Setting, Attacking, Blocking, Defense.
-3. For each discipline, send one short **rich message** (`sendRichMessage`) showing **one discipline and one level's criteria**, so nothing needs scrolling: the discipline and step (`Serve receive (2/6)`), `Level N`, that level's criteria text in the user's language, the question, and a footer note: "Players of both genders should be rated on games with standard male net height of 2.43m." Levels are shown only as numbers 0–6, with no division codes (A, BB…). No classic-HTML fallback.
-4. Buttons: **[◀] [✔ Choose N] [▶]** and **[Can't judge]**. ◀ / ▶ show the previous / next level by editing the same message. ◀ is hidden at 0 and ▶ at 6. **✔ Choose N** saves level N for this discipline. **Can't judge** saves NULL.
+3. For each discipline, send one short **rich message** (`sendRichMessage`) showing **one discipline and one level's criteria**, so nothing needs scrolling: "Please rate {name} (@username) in Serving (1/6):" (self-rating: "Please rate yourself in …"), then a quote with `Level N:` and that level's criteria text in the user's language. Levels are shown only as numbers 0–6, with no division codes (A, BB…). No classic-HTML fallback.
+4. Buttons: **[◀N-1] [Choose N] [N+1▶]** and **[Can't judge (skip)]**. ◀ / ▶ show the previous / next level by editing the same message. ◀ is hidden at 0 and ▶ at 6. **Choose N** saves level N for this discipline. **Can't judge** saves NULL.
 5. The first discipline opens at **level 0** (self-rating and peer rating alike). Each later discipline opens at the level chosen for the previous one. After "Can't judge", it stays at the level that was shown.
 6. At least one discipline must be answered. If all six are "Can't judge", save nothing and show "Nothing was saved."
 7. Saving: **one rating per (player, rater) pair.** Rating again overwrites the scores and sets `updated_at = now`.

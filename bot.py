@@ -22,8 +22,8 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (BotCommand, BufferedInputFile, CallbackQuery, ChatMemberUpdated, InlineKeyboardButton,
-                           InlineKeyboardMarkup, InputRichBlockFooter, InputRichBlockParagraph,
-                           InputRichBlockSectionHeading, InputRichMessage, Message)
+                           InlineKeyboardMarkup, InputRichBlockBlockQuotation, InputRichBlockParagraph,
+                           InputRichMessage, Message)
 
 import nightly
 import texts as T
@@ -84,6 +84,10 @@ class Pick(CallbackData, prefix="r"):
     pid: int
 
 
+class RateGo(CallbackData, prefix="rg"):
+    pid: int           # "OK" on the confirmation screen: start rating this player
+
+
 class Score(CallbackData, prefix="s"):
     step: int          # discipline index the button belongs to (stale presses are ignored)
     kind: str          # show (browse to level), choose, skip
@@ -132,6 +136,12 @@ async def is_member(bot: Bot, uid: int) -> bool | None:
 
 def _display(user) -> str:
     return user.first_name + (f" @{user.username}" if user.username else "")
+
+
+def with_handle(display: str) -> str:
+    """'Anna @anna' -> 'Anna (@anna)'; a name without a username stays as it is."""
+    name, sep, handle = display.rpartition(" @")
+    return f"{name} (@{handle})" if sep else display
 
 
 async def name_of(bot: Bot, uid: int, lang: str) -> str:
@@ -291,7 +301,7 @@ async def on_decline(cb: CallbackQuery, state: FSMContext, tr: Tr):
 
 async def start_self_rating(message: Message, state: FSMContext, uid: int, tr: Tr, lang: str):
     await message.answer(tr("SELF_RATE_INTRO"))
-    await begin_rating(message, state, lang, target=uid, is_self=True, header=[], name="")
+    await begin_rating(message, state, lang, target=uid, is_self=True, name="")
 
 
 # --- games (README §6) -----------------------------------------------------------
@@ -479,50 +489,72 @@ async def show_candidates(message: Message, bot: Bot, uid: int, page: int, tr: T
         await message.answer(text, reply_markup=keyboard(rows))
 
 
-@router.callback_query(Pick.filter())
-async def on_pick(cb: CallbackQuery, callback_data: Pick, state: FSMContext, bot: Bot, tr: Tr, lang: str):
-    await cb.answer()
-    uid, pid = cb.from_user.id, callback_data.pid
+def rateable(uid: int, pid: int) -> tuple[int, str | None] | None:
+    """(games together, last game) if uid may rate pid, else None."""
     games, last = db.together(uid, pid)
     if not ready(uid) or pid == uid or games == 0 or db.player(pid) is None:
+        return None
+    return games, last
+
+
+def confirm_text(name: str, games: int, last: str, tr: Tr, lang: str) -> str:
+    return "\n".join([tr("RATE_SELECTED", name=html.escape(name)),
+                      tr("RATE_INFO", games=games, ago=T.ago(lang, (now() - parse(last)).days)),
+                      tr("NET_NOTE"), tr("SKIP_HINT")])
+
+
+@router.callback_query(Pick.filter())
+async def on_pick(cb: CallbackQuery, callback_data: Pick, bot: Bot, tr: Tr, lang: str):
+    """Confirmation screen before the 6 disciplines: [BACK] to the list, [OK] to start."""
+    await cb.answer()
+    uid, pid = cb.from_user.id, callback_data.pid
+    ok = rateable(uid, pid)
+    if ok is None:
         return await cb.message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
     name = await name_of(bot, pid, lang)
-    header = [tr("RATING_HEADER", name=name),
-              tr("RATING_INFO", games=games, ago=T.ago(lang, (now() - parse(last)).days))]
-    await begin_rating(cb.message, state, lang, target=pid, is_self=False, header=header, name=name)
+    await cb.message.edit_text(confirm_text(name, *ok, tr, lang), reply_markup=keyboard(
+        [[(tr("BTN_BACK"), Page(page=-1)), (tr("BTN_OK"), RateGo(pid=pid))]]))
+
+
+@router.callback_query(RateGo.filter())
+async def on_rate_go(cb: CallbackQuery, callback_data: RateGo, state: FSMContext, bot: Bot, tr: Tr, lang: str):
+    await cb.answer()
+    uid, pid = cb.from_user.id, callback_data.pid
+    await cb.message.edit_reply_markup(reply_markup=None)
+    if rateable(uid, pid) is None:
+        return await cb.message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
+    name = await name_of(bot, pid, lang)
+    await begin_rating(cb.message, state, lang, target=pid, is_self=False, name=name)
 
 
 # --- the rating screen (README §7) -----------------------------------------------
-async def begin_rating(message: Message, state: FSMContext, lang: str, target: int, is_self: bool,
-                       header: list[str], name: str):
+async def begin_rating(message: Message, state: FSMContext, lang: str, target: int, is_self: bool, name: str):
     await state.set_state(Flow.rating)
-    await state.set_data({"target": target, "self": is_self, "name": name, "header": header,
+    await state.set_data({"target": target, "self": is_self, "name": name,
                           "scores": [], "level": FIRST_LEVEL, "msg": None})
     await render_discipline(message, state, lang)
 
 
 def discipline_screen(data: dict, lang: str) -> tuple[InputRichMessage, InlineKeyboardMarkup]:
-    """One discipline, one level's criteria. ◀ / ▶ browse levels, ✔ saves the shown level."""
+    """One discipline, one level's criteria (quoted). ◀N / N▶ browse levels, Choose N saves the shown one."""
     tr = partial(T.t, lang)
     step = len(data["scores"])
     key = DISCIPLINES[step]
     level = data["level"]
-    question = tr("WHICH_LEVEL_SELF") if data["self"] else tr("WHICH_LEVEL", name=data["name"])
-    blocks = [InputRichBlockSectionHeading(text=line, size=3 if i else 2) for i, line in enumerate(data["header"])]
-    blocks += [
-        InputRichBlockSectionHeading(text=tr("DISCIPLINE_STEP", discipline=T.discipline(lang, key), step=step + 1),
-                                     size=2),
-        InputRichBlockSectionHeading(text=tr("LEVEL", n=level), size=3),
-        InputRichBlockParagraph(text=T.criteria(lang, level, key)),
-        InputRichBlockParagraph(text=question),
-        InputRichBlockFooter(text=tr("NET_NOTE")),
+    discipline = T.discipline(lang, key)
+    prompt = (tr("RATE_PROMPT_SELF", discipline=discipline, step=step + 1) if data["self"] else
+              tr("RATE_PROMPT", name=with_handle(data["name"]), discipline=discipline, step=step + 1))
+    blocks = [
+        InputRichBlockParagraph(text=prompt),
+        InputRichBlockBlockQuotation(blocks=[InputRichBlockParagraph(text=tr("LEVEL", n=level)),
+                                             InputRichBlockParagraph(text=T.criteria(lang, level, key))]),
     ]
     row = []
     if level > MIN_LEVEL:
-        row.append(("◀", Score(step=step, kind="show", value=level - 1)))
+        row.append((f"◀{level - 1}", Score(step=step, kind="show", value=level - 1)))
     row.append((tr("BTN_CHOOSE", n=level), Score(step=step, kind="choose", value=level)))
     if level < MAX_LEVEL:
-        row.append(("▶", Score(step=step, kind="show", value=level + 1)))
+        row.append((f"{level + 1}▶", Score(step=step, kind="show", value=level + 1)))
     rows = [row, [(tr("BTN_CANT_JUDGE"), Score(step=step, kind="skip", value=level))]]
     return InputRichMessage(blocks=blocks), keyboard(rows)
 
@@ -573,7 +605,7 @@ async def finish_self_rating(message: Message, state: FSMContext, uid: int, scor
                              lang: str):
     if not db.save_rating(uid, uid, scores):
         await message.answer(tr("SELF_RATE_REQUIRED"))
-        return await begin_rating(message, state, lang, target=uid, is_self=True, header=[], name="")
+        return await begin_rating(message, state, lang, target=uid, is_self=True, name="")
     r = live_levels()[uid]
     shown = await nightly.set_tag(bot, GROUP_ID, uid, r.tag)
     if shown:
@@ -586,7 +618,7 @@ async def finish_self_rating(message: Message, state: FSMContext, uid: int, scor
 async def finish_peer_rating(message: Message, state: FSMContext, uid: int, target: int, scores: list,
                              name: str, tr: Tr):
     await state.clear()
-    if db.player(target) is None or db.together(uid, target)[0] == 0:
+    if rateable(uid, target) is None:
         return await message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
     if not db.save_rating(target, uid, scores):
         return await message.answer(tr("NOTHING_SAVED"), reply_markup=menu_kb(uid, tr))

@@ -28,8 +28,7 @@ def test_bad_input():
 
 
 def screen(lang="en", **data):
-    base = {"scores": [], "level": 0, "header": ["Rating Anna", "Games together: 2"], "name": "Anna",
-            "self": False}
+    base = {"scores": [], "level": 0, "name": "Anna @anna", "self": False}
     return bot.discipline_screen({**base, **data}, lang)
 
 
@@ -37,35 +36,44 @@ def buttons(kb):
     return [[(b.text, bot.Score.unpack(b.callback_data)) for b in row] for row in kb.inline_keyboard]
 
 
+def quoted(rich):
+    return [b.text for b in rich.blocks[1].blocks]
+
+
 def test_first_discipline_shows_only_level_0():
     rich, kb = screen()
-    texts = [b.text for b in rich.blocks]
-    assert "Serving (1/6)" in texts and "Level 0" in texts
-    assert T.criteria("en", 0, "serving") in texts
-    assert not any(T.criteria("en", 1, "serving") == t for t in texts)   # one level only
-    assert not any(b.type == "table" for b in rich.blocks)
-    assert rich.blocks[-1].text.startswith("Players of both genders")
+    assert [b.type for b in rich.blocks] == ["paragraph", "blockquote"]
+    assert rich.blocks[0].text == "Please rate Anna (@anna) in Serving (1/6):"
+    assert quoted(rich) == ["Level 0:", T.criteria("en", 0, "serving")]   # one level only
     rows = buttons(kb)
-    assert [t for t, _ in rows[0]] == ["✔ Choose 0", "▶"]                # no ◀ at level 0
+    assert [t for t, _ in rows[0]] == ["Choose 0", "1▶"]                  # no ◀ at level 0
     assert rows[0][0][1].kind == "choose" and rows[0][0][1].value == 0
     assert rows[0][1][1].kind == "show" and rows[0][1][1].value == 1
-    assert [t for t, _ in rows[1]] == ["Can't judge"]
+    assert [t for t, _ in rows[1]] == ["Can't judge (skip)"]
+
+
+def test_middle_level_buttons_show_neighbours():
+    _, kb = screen(level=1)
+    assert [t for t, _ in buttons(kb)[0]] == ["◀0", "Choose 1", "2▶"]
 
 
 def test_top_level_and_step():
     _, kb = screen(scores=[3] * 5, level=6)
     rows = buttons(kb)
-    assert [t for t, _ in rows[0]] == ["◀", "✔ Choose 6"]                 # no ▶ at level 6
+    assert [t for t, _ in rows[0]] == ["◀5", "Choose 6"]                  # no ▶ at level 6
     assert DISCIPLINES[5] == "defense"
     assert all(cd.step == 5 for row in rows for _, cd in row)            # stale presses can be ignored
 
 
-def test_self_rating_question_and_translations():
-    rich, _ = screen(lang="ru", self=True, header=[], level=3)
-    texts = [b.text for b in rich.blocks]
-    assert "Подача (1/6)" in texts and "Уровень 3" in texts
-    assert "Какой уровень лучше всего подходит вам?" in texts
-    assert rich.blocks[-1].text.startswith("Игроков обоих полов")
+def test_name_without_username():
+    rich, _ = screen(name="Anna")
+    assert rich.blocks[0].text == "Please rate Anna in Serving (1/6):"
+
+
+def test_self_rating_prompt_and_translations():
+    rich, _ = screen(lang="ru", self=True, name="", level=3)
+    assert rich.blocks[0].text == "Оцените себя в дисциплине «Подача» (1/6):"
+    assert quoted(rich)[0] == "Уровень 3:"
     rich, kb = screen(lang="lv", level=2)
-    assert "Servēšana (1/6)" in [b.text for b in rich.blocks]
-    assert buttons(kb)[1][0][0] == "Nevaru novērtēt"
+    assert "Servēšana" in rich.blocks[0].text and quoted(rich)[0] == "2. līmenis:"
+    assert buttons(kb)[1][0][0] == "Nevaru novērtēt (izlaist)"
