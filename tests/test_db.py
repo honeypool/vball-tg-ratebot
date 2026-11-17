@@ -129,3 +129,15 @@ def test_peer_and_given_counts(db):
     assert db.peer_count(1) == 2
     assert db.given_count(1) == 1
     assert db.is_self_rated(1) and not db.is_self_rated(2)
+
+
+def test_recently_rated_flag_and_date(db):
+    game_with(db, [1, 2, 3, 4], now() - timedelta(days=2))
+    db.save_rating(2, 1, [3] * 6)
+    rows = {r["pid"]: r for r in db.rate_candidates(1, RERATE)}
+    assert rows[2]["needs"] == 0 and rows[3]["needs"] == 1
+    assert [r["pid"] for r in db.rate_candidates(1, RERATE)][-1] == 2
+    assert db.rated_at(2, 1) == rows[2]["mine"]
+    assert db.rated_at(3, 1) is None
+    db.conn.execute("UPDATE ratings SET updated_at = '2020-01-01T00:00:00Z'")   # stale -> needs again
+    assert {r["pid"]: r["needs"] for r in db.rate_candidates(1, RERATE)}[2] == 1

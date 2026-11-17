@@ -140,11 +140,11 @@ Sort the candidates by:
 2. fewest peer ratings received
 3. most games together
 
-Show the **top 5**, with "You had a chance to play with these players who really need your rating. Please spend a few minutes to rate them." Below them, a **[Show all]** button lists all candidates in the same order, 10 per page.
+Show the **top 5 that need my rating**, with "You had a chance to play with these players who really need your rating. Please spend a few minutes to rate them." Players I rated within 90 days are never on this first screen; if nobody needs my rating, say "You have recently rated all the players you played with…". A **[Show all]** button lists all candidates in the same order, 10 per page, with recently rated players at the end marked ✓ (they can still be re-rated).
 
 ### Rating screen
 
-1. **Confirmation screen** after a player is picked: "You have selected {name} for rating. / Games together: N, last: {ago}. / Players of both genders should be rated on games with standard male net height of 2.43m. / If you are not sure about some particular skill - feel free to skip to the next discipline." Buttons **[BACK]** (back to the candidate list) and **[OK]** (start rating).
+1. **Confirmation screen** after a player is picked: "You have selected {name} for rating. / Games together: N, last: {ago}. / (if I rated this player before) You already rated this player on dd.mm.yyyy. Your new rating will replace the previous one. / Players of both genders should be rated on games with standard male net height of 2.43m. / If you are not sure about some particular skill - feel free to skip to the next discipline." Buttons **[BACK]** (back to the candidate list) and **[OK]** (start rating; the confirmation message is deleted so it does not distract).
 2. Ask the 6 disciplines one at a time: Serving, Serve receive, Setting, Attacking, Blocking, Defense.
 3. For each discipline, send one short **rich message** (`sendRichMessage`) showing **one discipline and one level's criteria**, so nothing needs scrolling: "Please rate {name} (@username) in:" (self-rating: "Please rate yourself in:"), the discipline and step in bold on the next line (**Serving (1/6)**), then a quote with `Level N:` and that level's criteria text in the user's language. Levels are shown only as numbers 0–6, with no division codes (A, BB…). No classic-HTML fallback.
 4. Buttons: **[◀N-1] [Choose N] [N+1▶]** and **[Can't judge (skip)]**. ◀ / ▶ show the previous / next level by editing the same message. ◀ is hidden at 0 and ▶ at 6. **Choose N** saves level N for this discipline. **Can't judge** saves NULL.

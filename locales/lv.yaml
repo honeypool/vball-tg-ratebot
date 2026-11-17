@@ -16,9 +16,9 @@ START_HINT: "Nosūtiet /start, lai sāktu."
 PLAYER: "Spēlētājs"
 
 WELCOME: |-
-  🏐 <b>Volejbola līmeņa bots</b>
+  🏐 <b>Volejbola līmeņa vērtējumu bots</b>
 
-  Mūsu grupas spēlētāji pēc kopīgām spēlēm novērtē cits cita prasmes. Jūsu līmenis (0.0–6.0) tiek rādīts kā birka blakus jūsu vārdam grupā.
+  Mūsu grupas spēlētāji pēc kopīgām spēlēm novērtē cits cita prasmes. Jūsu līmenis (0.0–6.0) tiks rādīts kā birka (Name tag) blakus jūsu vārdam grupā.
 
   • Vērtējumi ir anonīmi: neviens neredz, kurš ko novērtēja.
   • Jūsu vārds netiek saglabāts. Tiek glabāts tikai jūsu Telegram ID, valoda, vērtējumi un spēles, kurās piedalījāties.
@@ -73,12 +73,14 @@ CANCELLED: "Atcelts."
 
 NO_CANDIDATES: "Pagaidām nav neviena, ko novērtēt. Spēlētājus var novērtēt pēc kopīgas spēles, kurā piedalījās vismaz 4 spēlētāji. Pievienojiet savas spēles izvēlnē."
 CANDIDATES_TOP: "Jūs spēlējāt kopā ar šiem spēlētājiem, un viņiem ļoti vajag jūsu vērtējumu. Lūdzu, veltiet dažas minūtes, lai viņus novērtētu."
+ALL_RATED: "Jūs nesen novērtējāt visus spēlētājus, ar kuriem spēlējāt. Paldies! Vērtējumu joprojām var atjaunināt sadaļā „Rādīt visus”."
 CANDIDATES_ALL: "Visi spēlētāji, kurus varat novērtēt (lapa {page}/{pages}):"
 BTN_SHOW_ALL: "Rādīt visus"
 NOT_RATEABLE: "Novērtēt var tikai spēlētājus, ar kuriem esat spēlējis ieskaitītā spēlē."
 
 RATE_SELECTED: "Jūs izvēlējāties novērtēt spēlētāju <b>{name}</b>."
 RATE_INFO: "Kopīgas spēles: {games}, pēdējā: {ago}."
+RATE_AGAIN: "Jūs jau novērtējāt šo spēlētāju {date}. Jaunais vērtējums aizstās iepriekšējo."
 SKIP_HINT: "Ja neesat pārliecināts par kādu prasmi, droši pārejiet pie nākamās disciplīnas."
 BTN_BACK: "ATPAKAĻ"
 BTN_OK: "OK"

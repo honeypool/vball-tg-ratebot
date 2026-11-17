@@ -216,20 +216,27 @@ class DB:
         return {(r[0], r[1]): r[2] for r in rows}
 
     def rate_candidates(self, rater: int, rerate_after: timedelta) -> list[sqlite3.Row]:
-        """Players the rater may rate, sorted per README §7."""
+        """Players the rater may rate, sorted per README §7. `needs` = not rated by me, or my rating is stale;
+        `mine` = when I last rated them (None if never)."""
         stale = iso(now() - rerate_after)
         return self.q(f"""WITH {COUNTING},
             mates AS (
               SELECT y.player_id AS pid, COUNT(*) AS games FROM game_players x
               JOIN game_players y ON y.game_id = x.game_id AND y.player_id != x.player_id
               JOIN counting c ON c.game_id = x.game_id
-              WHERE x.player_id = ? GROUP BY y.player_id)
-            SELECT m.pid, m.games,
-              (SELECT COUNT(*) FROM ratings r WHERE r.player_id = m.pid AND r.rater_id != m.pid) AS peer_count,
-              (SELECT updated_at FROM ratings r WHERE r.player_id = m.pid AND r.rater_id = ?) AS mine
-            FROM mates m JOIN players p ON p.telegram_id = m.pid
-            ORDER BY (mine IS NULL OR mine < ?) DESC, peer_count ASC, m.games DESC, m.pid""",
+              WHERE x.player_id = ? GROUP BY y.player_id),
+            cands AS (
+              SELECT m.pid, m.games,
+                (SELECT COUNT(*) FROM ratings r WHERE r.player_id = m.pid AND r.rater_id != m.pid) AS peer_count,
+                (SELECT updated_at FROM ratings r WHERE r.player_id = m.pid AND r.rater_id = ?) AS mine
+              FROM mates m JOIN players p ON p.telegram_id = m.pid)
+            SELECT *, (mine IS NULL OR mine < ?) AS needs FROM cands
+            ORDER BY needs DESC, peer_count ASC, games DESC, pid""",
                       rater, rater, stale)
+
+    def rated_at(self, player: int, rater: int) -> str | None:
+        """When `rater` last rated `player` (None if never)."""
+        return self.one("SELECT updated_at FROM ratings WHERE player_id = ? AND rater_id = ?", player, rater)
 
     # --- ratings ---------------------------------------------------------------
     def save_rating(self, player: int, rater: int, scores: list[int | None]) -> bool:

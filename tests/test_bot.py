@@ -83,3 +83,12 @@ def test_self_rating_prompt_and_translations():
     rich, kb = screen(lang="lv", level=2)
     assert heading(rich)[1] == "Servēšana (1/6)" and quoted(rich)[0] == "2. līmenis:"
     assert buttons(kb)[1][0][0] == "Nevaru novērtēt (izlaist)"
+
+
+def test_confirm_text_mentions_previous_rating():
+    tr = lambda k, **kw: T.t("en", k, **kw)
+    last = bot.iso(bot.now())
+    first = bot.confirm_text("Anna", 2, last, None, tr, "en")
+    assert "already rated" not in first and "Games together: 2, last: today." in first
+    again = bot.confirm_text("Anna", 2, last, "2026-11-10T10:00:00Z", tr, "en")
+    assert "You already rated this player on 10.11.2026." in again

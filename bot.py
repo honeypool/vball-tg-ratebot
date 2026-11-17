@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import time
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
@@ -464,15 +465,17 @@ async def show_candidates(message: Message, bot: Bot, uid: int, page: int, tr: T
         return await message.answer(tr("NO_CANDIDATES"), reply_markup=home_kb(tr))
     pages = (len(cands) + PAGE_SIZE - 1) // PAGE_SIZE
     if page < 0:
-        shown, text = cands[:TOP_N], tr("CANDIDATES_TOP")
+        # first screen: only players who need my rating; recently rated ones are at the end of "Show all"
+        shown = [c for c in cands if c["needs"]][:TOP_N]
+        text = tr("CANDIDATES_TOP") if shown else tr("ALL_RATED")
     else:
         page = min(page, pages - 1)
         shown = cands[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
         text = tr("CANDIDATES_ALL", page=page + 1, pages=pages)
     names = await asyncio.gather(*(name_of(bot, c["pid"], lang) for c in shown))
-    rows = [[(n, Pick(pid=c["pid"]))] for n, c in zip(names, shown)]
+    rows = [[(n if c["needs"] else f"✓ {n}", Pick(pid=c["pid"]))] for n, c in zip(names, shown)]
     if page < 0:
-        if len(cands) > TOP_N:
+        if len(cands) > len(shown):
             rows.append([(tr("BTN_SHOW_ALL"), Page(page=0))])
     else:
         nav = []
@@ -497,10 +500,12 @@ def rateable(uid: int, pid: int) -> tuple[int, str | None] | None:
     return games, last
 
 
-def confirm_text(name: str, games: int, last: str, tr: Tr, lang: str) -> str:
-    return "\n".join([tr("RATE_SELECTED", name=html.escape(name)),
-                      tr("RATE_INFO", games=games, ago=T.ago(lang, (now() - parse(last)).days)),
-                      tr("NET_NOTE"), tr("SKIP_HINT")])
+def confirm_text(name: str, games: int, last: str, rated_at: str | None, tr: Tr, lang: str) -> str:
+    lines = [tr("RATE_SELECTED", name=html.escape(name)),
+             tr("RATE_INFO", games=games, ago=T.ago(lang, (now() - parse(last)).days))]
+    if rated_at:
+        lines.append(tr("RATE_AGAIN", date=parse(rated_at).astimezone(TZ).strftime("%d.%m.%Y")))
+    return "\n".join(lines + [tr("NET_NOTE"), tr("SKIP_HINT")])
 
 
 @router.callback_query(Pick.filter())
@@ -512,7 +517,7 @@ async def on_pick(cb: CallbackQuery, callback_data: Pick, bot: Bot, tr: Tr, lang
     if ok is None:
         return await cb.message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
     name = await name_of(bot, pid, lang)
-    await cb.message.edit_text(confirm_text(name, *ok, tr, lang), reply_markup=keyboard(
+    await cb.message.edit_text(confirm_text(name, *ok, db.rated_at(pid, uid), tr, lang), reply_markup=keyboard(
         [[(tr("BTN_BACK"), Page(page=-1)), (tr("BTN_OK"), RateGo(pid=pid))]]))
 
 
@@ -520,7 +525,11 @@ async def on_pick(cb: CallbackQuery, callback_data: Pick, bot: Bot, tr: Tr, lang
 async def on_rate_go(cb: CallbackQuery, callback_data: RateGo, state: FSMContext, bot: Bot, tr: Tr, lang: str):
     await cb.answer()
     uid, pid = cb.from_user.id, callback_data.pid
-    await cb.message.edit_reply_markup(reply_markup=None)
+    try:
+        await cb.message.delete()   # the confirmation text would only distract from the rating screen
+    except TelegramBadRequest:      # too old (>48h) or already gone: at least drop the buttons
+        with suppress(TelegramBadRequest):
+            await cb.message.edit_reply_markup(reply_markup=None)
     if rateable(uid, pid) is None:
         return await cb.message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
     name = await name_of(bot, pid, lang)
