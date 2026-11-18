@@ -4,6 +4,7 @@
 set -e
 cd "$(dirname "$0")"
 mkdir -p data/backups
+chown 1000:1000 data/backups   # the container runs as uid 1000 and writes the backup file itself
 NAME="backup-$(date +%F).sqlite"
 docker compose exec -T bot python -c "
 import sqlite3
