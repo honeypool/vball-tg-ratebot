@@ -141,3 +141,12 @@ def test_recently_rated_flag_and_date(db):
     assert db.rated_at(3, 1) is None
     db.conn.execute("UPDATE ratings SET updated_at = '2020-01-01T00:00:00Z'")   # stale -> needs again
     assert {r["pid"]: r["needs"] for r in db.rate_candidates(1, RERATE)}[2] == 1
+
+
+def test_my_games_all_newest_first(db):
+    old = game_with(db, [1, 2], now() - timedelta(days=30))          # 2 players can be submitted
+    new = game_with(db, [1, 3, 4, 5], now() - timedelta(days=1))
+    game_with(db, [6, 7], now() - timedelta(days=2))                  # not mine
+    rows = db.recent_games(1, limit=-1)
+    assert [(r["id"], r["n"]) for r in rows] == [(new, 4), (old, 2)]
+    assert db.rate_candidates(1, RERATE) and 2 not in {r["pid"] for r in db.rate_candidates(1, RERATE)}

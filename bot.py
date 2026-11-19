@@ -28,7 +28,7 @@ from aiogram.types import (BotCommand, BufferedInputFile, CallbackQuery, ChatMem
 
 import nightly
 import texts as T
-from db import DB, MAX_PLAYERS, MIN_COUNTING_PLAYERS, Added, iso, now, parse
+from db import DB, MAX_PLAYERS, MIN_COUNTING_PLAYERS, MIN_SUBMIT_PLAYERS, Added, iso, now, parse
 from rating import DISCIPLINES, MAX_LEVEL, MIN_LEVEL
 
 
@@ -65,11 +65,16 @@ Tr = Callable[..., str]            # tr("KEY", **kw) -> text in the user's langu
 
 # --- callback data ---------------------------------------------------------------
 class Menu(CallbackData, prefix="m"):
-    action: str        # home, submit, rate, stats, language, revoke, revoke_yes, consent, decline
+    action: str        # home, games, submit, rate, stats, language, revoke, revoke_yes, consent, decline
 
 
 class Lang(CallbackData, prefix="l"):
     code: str
+
+
+class MyGames(CallbackData, prefix="mg"):
+    kind: str          # list (value = page), open (value = game id), add (value = game id)
+    value: int
 
 
 class GamePick(CallbackData, prefix="g"):
@@ -215,7 +220,7 @@ async def user_lang(user, state: FSMContext | None) -> str:
 
 # --- menu ------------------------------------------------------------------------
 def menu_kb(uid: int, tr: Tr) -> InlineKeyboardMarkup:
-    rows = [[(tr("BTN_SUBMIT"), Menu(action="submit"))], [(tr("BTN_RATE"), Menu(action="rate"))]]
+    rows = [[(tr("BTN_MY_GAMES"), Menu(action="games"))], [(tr("BTN_RATE"), Menu(action="rate"))]]
     if db.peer_count(uid) >= STATS_MIN_PEERS:
         rows.append([(tr("BTN_STATS"), Menu(action="stats"))])
     rows.append([(tr("BTN_LANGUAGE"), Menu(action="language"))])
@@ -326,6 +331,86 @@ def parse_game_time(text: str, now_utc: datetime) -> datetime | None:
     return t.astimezone(timezone.utc)
 
 
+def games_screen(games: list, page: int, tr: Tr) -> tuple[str, InlineKeyboardMarkup]:
+    """My games: one button per game (newest first), then [Submit a new game] and [Menu]."""
+    pages = max(1, -(-len(games) // PAGE_SIZE))
+    page = max(0, min(page, pages - 1))
+    rows = []
+    for g in games[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
+        date, hm = fmt_local(g["start_at"])
+        rows.append([(tr("GAME_ROW", date=date, time=hm, n=g["n"]), MyGames(kind="open", value=g["id"]))])
+    nav = []
+    if page > 0:
+        nav.append(("◀", MyGames(kind="list", value=page - 1)))
+    if page < pages - 1:
+        nav.append(("▶", MyGames(kind="list", value=page + 1)))
+    if nav:
+        rows.append(nav)
+    rows.append([(tr("BTN_NEW_GAME"), Menu(action="submit"))])
+    rows.append([(tr("BTN_MENU"), Menu(action="home"))])
+    text = tr("MY_GAMES", page=page + 1, pages=pages) if games else tr("MY_GAMES_EMPTY")
+    return text, keyboard(rows)
+
+
+async def show_games(message: Message, uid: int, page: int, tr: Tr, edit: bool = False):
+    if not ready(uid):
+        return await message.answer(tr("EXPIRED"))
+    text, markup = games_screen(db.recent_games(uid, limit=-1), page, tr)
+    if edit:
+        await message.edit_text(text, reply_markup=markup)
+    else:
+        await message.answer(text, reply_markup=markup)
+
+
+@router.callback_query(Menu.filter(F.action == "games"))
+async def on_my_games(cb: CallbackQuery, state: FSMContext, tr: Tr):
+    await cb.answer()
+    await state.clear()
+    await show_games(cb.message, cb.from_user.id, 0, tr)
+
+
+def my_game(uid: int, gid: int):
+    """The game, if it exists and uid played in it."""
+    g = db.game(gid)
+    return g if g and uid in db.game_player_ids(gid) else None
+
+
+async def show_game(message: Message, bot: Bot, uid: int, gid: int, tr: Tr, lang: str):
+    """One game: date, time and every player, with [Add players] and [« My games]."""
+    g = db.game(gid)
+    date, hm = fmt_local(g["start_at"])
+    names = sorted(await asyncio.gather(*(name_of(bot, p, lang) for p in db.game_player_ids(gid))),
+                   key=str.casefold)
+    text = tr("GAME_DETAIL", date=date, time=hm, n=g["n"],
+              names="\n".join(f"• {html.escape(n)}" for n in names))
+    if g["n"] < MIN_COUNTING_PLAYERS:
+        text += "\n\n" + tr("GAME_NOT_COUNTING", min=MIN_COUNTING_PLAYERS)
+    await message.edit_text(text, reply_markup=keyboard([
+        [(tr("BTN_ADD_PLAYERS"), MyGames(kind="add", value=gid))],
+        [(tr("BTN_BACK_GAMES"), MyGames(kind="list", value=0))]]))
+
+
+@router.callback_query(MyGames.filter())
+async def on_my_games_nav(cb: CallbackQuery, callback_data: MyGames, state: FSMContext, bot: Bot, tr: Tr,
+                          lang: str):
+    uid, kind, value = cb.from_user.id, callback_data.kind, callback_data.value
+    if kind == "list":
+        await cb.answer()
+        await state.clear()
+        return await show_games(cb.message, uid, value, tr, edit=True)
+    if not ready(uid) or my_game(uid, value) is None:
+        return await cb.answer(tr("NOT_IN_GAME"), show_alert=True)
+    await cb.answer()
+    if kind == "open":
+        await state.clear()
+        return await show_game(cb.message, bot, uid, value, tr, lang)
+    # add: the player picker, without the players already in the game
+    await state.set_state(Flow.game_players)
+    await state.set_data({"start": db.game(value)["start_at"], "selected": [], "page": 0, "game": value})
+    await render_picker(cb.message, state, bot, uid, tr, lang, edit=True)
+
+
+# --- submit a new game (README §6) -------------------------------------------------
 @router.callback_query(Menu.filter(F.action == "submit"))
 async def on_submit(cb: CallbackQuery, state: FSMContext, tr: Tr):
     await cb.answer()
@@ -358,6 +443,9 @@ async def render_picker(message: Message, state: FSMContext, bot: Bot, me: int, 
                         edit: bool = False):
     data = await state.get_data()
     people = await roster(bot, me, lang)
+    if data.get("game"):   # adding to an existing game: only people who aren't in it yet
+        already = set(db.game_player_ids(data["game"]))
+        people = [p for p in people if p[0] not in already]
     selected = set(data["selected"])
     pages = max(1, -(-len(people) // PAGE_SIZE))
     page = min(data["page"], pages - 1)
@@ -373,7 +461,13 @@ async def render_picker(message: Message, state: FSMContext, bot: Bot, me: int, 
     rows.append([(tr("BTN_DONE", n=len(selected)), GamePick(kind="done", value=0))])
     rows.append([(tr("BTN_CANCEL"), GamePick(kind="cancel", value=0))])
     date, hm = fmt_local(data["start"])
-    text = tr("PICK_PLAYERS", date=date, time=hm, min=MIN_COUNTING_PLAYERS, page=page + 1, pages=pages)
+    if data.get("game"):
+        text = (tr("PICK_ADD", date=date, time=hm, page=page + 1, pages=pages) if people else
+                tr("NO_ONE_TO_ADD"))
+        if not people:
+            rows = rows[-1:]   # only [Cancel]
+    else:
+        text = tr("PICK_PLAYERS", date=date, time=hm, min=MIN_SUBMIT_PLAYERS, page=page + 1, pages=pages)
     if edit:
         await message.edit_text(text, reply_markup=keyboard(rows))
     else:
@@ -386,8 +480,11 @@ async def on_game_pick(cb: CallbackQuery, callback_data: GamePick, state: FSMCon
     uid, kind, value = cb.from_user.id, callback_data.kind, callback_data.value
     data = await state.get_data()
     selected: list[int] = data["selected"]
-    if kind == "done" and len(selected) < MIN_COUNTING_PLAYERS:
-        return await cb.answer(tr("NEED_MIN", min=MIN_COUNTING_PLAYERS), show_alert=True)
+    gid = data.get("game")   # set when adding players to an existing game from My games
+    if kind == "done" and gid and not selected:
+        return await cb.answer(tr("NEED_ONE"), show_alert=True)
+    if kind == "done" and not gid and (len(selected) < MIN_SUBMIT_PLAYERS or uid not in selected):
+        return await cb.answer(tr("NEED_MIN", min=MIN_SUBMIT_PLAYERS), show_alert=True)
     await cb.answer()
 
     if kind in ("toggle", "page"):
@@ -403,8 +500,17 @@ async def on_game_pick(cb: CallbackQuery, callback_data: GamePick, state: FSMCon
 
     if kind == "cancel":
         await state.clear()
+        if gid and my_game(uid, gid):
+            return await show_game(cb.message, bot, uid, gid, tr, lang)
         await cb.message.edit_text(tr("CANCELLED"))
-        return await show_menu(cb.message, uid, tr)
+        return await show_games(cb.message, uid, 0, tr)
+
+    if kind == "done" and gid:
+        await state.clear()
+        await cb.message.edit_reply_markup(reply_markup=None)
+        if my_game(uid, gid) is None:
+            return await cb.message.answer(tr("NOT_IN_GAME"), reply_markup=home_kb(tr))
+        return await report_saved(cb.message, bot, gid, db.add_players(gid, selected), tr, lang)
 
     start = parse(data["start"])
     if kind == "done":
@@ -419,7 +525,8 @@ async def on_game_pick(cb: CallbackQuery, callback_data: GamePick, state: FSMCon
         new = [p for p in selected if p not in existing]
         if not new:
             await state.clear()
-            return await cb.message.answer(tr("ALL_ALREADY_IN", date=date, time=hm), reply_markup=menu_kb(uid, tr))
+            return await cb.message.answer(tr("ALL_ALREADY_IN", date=date, time=hm), reply_markup=keyboard(
+                [[(tr("BTN_BACK_GAMES"), MyGames(kind="list", value=0))]]))
         await cb.message.answer(
             tr("GAME_EXISTS", date=date, time=hm, existing=await names_list(bot, existing, lang),
                new=await names_list(bot, new, lang)),
@@ -439,8 +546,11 @@ async def report_saved(message: Message, bot: Bot, gid: int, res: Added, tr: Tr,
         lines.append(tr("SKIPPED_CLASH", names=await names_list(bot, res.clash, lang)))
     if res.full:
         lines.append(tr("SKIPPED_FULL", names=await names_list(bot, res.full, lang)))
+    if g["n"] < MIN_COUNTING_PLAYERS:
+        lines.append(tr("GAME_NOT_COUNTING", min=MIN_COUNTING_PLAYERS))
     await message.answer("\n\n".join(lines), reply_markup=keyboard([
-        [(tr("BTN_RATE_PLAYERS"), Menu(action="rate"))], [(tr("BTN_MENU"), Menu(action="home"))]]))
+        [(tr("BTN_RATE_PLAYERS"), Menu(action="rate"))],
+        [(tr("BTN_BACK_GAMES"), MyGames(kind="list", value=0))]]))
 
 
 # --- choosing whom to rate (README §7) -------------------------------------------

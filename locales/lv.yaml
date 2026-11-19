@@ -39,7 +39,7 @@ SELF_RATE_DONE_NO_TAG: "Paldies! Jūsu sākuma līmenis ir <b>{tag}</b>. Telegra
 SELF_RATE_REQUIRED: "Lūdzu, novērtējiet sevi vismaz vienā elementā. Mēģināsim vēlreiz."
 
 MENU: "Ko vēlaties darīt?"
-BTN_SUBMIT: "🏐 Pievienot spēli"
+BTN_MY_GAMES: "🏐 Manas spēles"
 BTN_RATE: "⭐ Novērtēt spēlētāju"
 BTN_STATS: "📊 Mana statistika"
 BTN_LANGUAGE: "🌐 Valoda"
@@ -52,9 +52,9 @@ FUTURE_TIME: "Spēlei jābūt pagātnē. Pievienojiet to pēc tās sākuma."
 
 PICK_PLAYERS: |-
   Kas spēlēja <b>{date} plkst. {time}</b>?
-  Atzīmējiet vismaz {min} spēlētājus, arī sevi, ja spēlējāt. (lapa {page}/{pages})
+  Atzīmējiet vismaz {min} spēlētājus, arī sevi. (lapa {page}/{pages})
 BTN_DONE: "✔ Gatavs (izvēlēti: {n})"
-NEED_MIN: "Izvēlieties vismaz {min} spēlētājus."
+NEED_MIN: "Izvēlieties vismaz {min} spēlētājus, arī sevi."
 GAME_EXISTS: |-
   Spēle <b>{date} plkst. {time}</b> jau ir pievienota, tajā spēlēja:
   {existing}
@@ -71,7 +71,20 @@ SKIPPED_FULL: "Nav pievienoti (spēle ir pilna): {names}"
 BTN_RATE_PLAYERS: "⭐ Novērtēt spēlētājus"
 CANCELLED: "Atcelts."
 
-NO_CANDIDATES: "Pagaidām nav neviena, ko novērtēt. Spēlētājus var novērtēt pēc kopīgas spēles, kurā piedalījās vismaz 4 spēlētāji. Pievienojiet savas spēles izvēlnē."
+MY_GAMES: "Jūsu spēles (lapa {page}/{pages}). Atveriet spēli, lai redzētu visus spēlētājus vai pievienotu kādu, kas spēlēja."
+MY_GAMES_EMPTY: "Jums vēl nav nevienas spēles. Pievienojiet pirmo!"
+GAME_ROW: "{date} {time} · {n} 👤"
+BTN_NEW_GAME: "➕ Pievienot jaunu spēli"
+BTN_BACK_GAMES: "« Manas spēles"
+GAME_DETAIL: "🏐 Spēle <b>{date} plkst. {time}</b>\n\nSpēlētāji ({n}):\n{names}"
+GAME_NOT_COUNTING: "Spēle tiks ņemta vērā vērtējumos, kad tajā būs vismaz {min} spēlētāji."
+BTN_ADD_PLAYERS: "➕ Pievienot spēlētājus"
+PICK_ADD: "Kas vēl spēlēja <b>{date} plkst. {time}</b>? Atzīmējiet spēlētājus, kurus pievienot. (lapa {page}/{pages})"
+NO_ONE_TO_ADD: "Visi spēlētāji jau ir šajā spēlē."
+NEED_ONE: "Izvēlieties vismaz vienu spēlētāju."
+NOT_IN_GAME: "Var atvērt tikai tās spēles, kurās piedalījāties."
+
+NO_CANDIDATES: "Pagaidām nav neviena, ko novērtēt. Spēlētājus var novērtēt pēc kopīgas spēles, kurā piedalījās vismaz 4 spēlētāji. Pievienojiet savas spēles sadaļā „Manas spēles”."
 CANDIDATES_TOP: "Jūs spēlējāt kopā ar šiem spēlētājiem, un viņiem ļoti vajag jūsu vērtējumu. Lūdzu, veltiet dažas minūtes, lai viņus novērtētu."
 ALL_RATED: "Jūs nesen novērtējāt visus spēlētājus, ar kuriem spēlējāt. Paldies! Vērtējumu joprojām var atjaunināt sadaļā „Rādīt visus”."
 CANDIDATES_ALL: "Visi spēlētāji, kurus varat novērtēt (lapa {page}/{pages}):"

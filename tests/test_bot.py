@@ -92,3 +92,29 @@ def test_confirm_text_mentions_previous_rating():
     assert "already rated" not in first and "Games together: 2, last: today." in first
     again = bot.confirm_text("Anna", 2, last, "2026-11-10T10:00:00Z", tr, "en")
     assert "You already rated this player on 10.11.2026." in again
+
+
+def game_buttons(kb):
+    return [[(b.text, b.callback_data) for b in row] for row in kb.inline_keyboard]
+
+
+def test_my_games_screen_lists_games_and_new_game_button():
+    tr = lambda k, **kw: T.t("en", k, **kw)
+    games = [{"id": 7, "start_at": "2026-11-08T17:00:00Z", "n": 2}]
+    text, kb = bot.games_screen(games, 0, tr)
+    rows = game_buttons(kb)
+    assert text.startswith("Your games (page 1/1)")
+    assert rows[0] == [("08.11 19:00 · 2 👤", bot.MyGames(kind="open", value=7).pack())]
+    assert rows[1] == [("➕ Submit a new game", bot.Menu(action="submit").pack())]
+    assert rows[2][0][0] == "« Menu"
+
+
+def test_my_games_empty_and_paging():
+    tr = lambda k, **kw: T.t("en", k, **kw)
+    text, kb = bot.games_screen([], 0, tr)
+    assert text == T.t("en", "MY_GAMES_EMPTY") and len(kb.inline_keyboard) == 2
+    games = [{"id": i, "start_at": "2026-11-08T17:00:00Z", "n": 4} for i in range(12)]
+    text, kb = bot.games_screen(games, 1, tr)
+    rows = game_buttons(kb)
+    assert "page 2/2" in text and len(rows) == 2 + 3        # 2 games, ◀, new game, menu
+    assert rows[2] == [("◀", bot.MyGames(kind="list", value=0).pack())]

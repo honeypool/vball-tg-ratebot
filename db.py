@@ -12,6 +12,7 @@ from typing import NamedTuple
 from rating import DISCIPLINES, Rating
 
 MIN_COUNTING_PLAYERS = 4   # a game "counts" only with at least this many players
+MIN_SUBMIT_PLAYERS = 2     # a new game needs at least this many players (the submitter included)
 MAX_PLAYERS = 100          # per game
 CLASH = timedelta(hours=1)  # games closer than this are "the same time"
 
@@ -191,6 +192,7 @@ class DB:
         return res
 
     def recent_games(self, uid: int, limit: int = 10) -> list[sqlite3.Row]:
+        """The player's games, newest first, with player count `n`. limit=-1: all of them."""
         return self.q("""SELECT g.id, g.start_at, (SELECT COUNT(*) FROM game_players WHERE game_id = g.id) AS n
                          FROM games g JOIN game_players gp ON gp.game_id = g.id
                          WHERE gp.player_id = ? ORDER BY g.start_at DESC LIMIT ?""", uid, limit)

@@ -39,7 +39,7 @@ SELF_RATE_DONE_NO_TAG: "Thanks! Your starting level is <b>{tag}</b>. Telegram do
 SELF_RATE_REQUIRED: "Please rate at least one discipline about yourself. Let's try again."
 
 MENU: "What would you like to do?"
-BTN_SUBMIT: "🏐 Submit a game"
+BTN_MY_GAMES: "🏐 My games"
 BTN_RATE: "⭐ Rate a player"
 BTN_STATS: "📊 My stats"
 BTN_LANGUAGE: "🌐 Language"
@@ -52,9 +52,9 @@ FUTURE_TIME: "The game must be in the past. Submit it after it has started."
 
 PICK_PLAYERS: |-
   Who played on <b>{date} at {time}</b>?
-  Tick at least {min} players, including yourself if you played. (page {page}/{pages})
+  Tick at least {min} players, including yourself. (page {page}/{pages})
 BTN_DONE: "✔ Done ({n} selected)"
-NEED_MIN: "Select at least {min} players."
+NEED_MIN: "Select at least {min} players, including yourself."
 GAME_EXISTS: |-
   A game on <b>{date} at {time}</b> already exists with these players:
   {existing}
@@ -71,7 +71,20 @@ SKIPPED_FULL: "Not added (the game is full): {names}"
 BTN_RATE_PLAYERS: "⭐ Rate players"
 CANCELLED: "Cancelled."
 
-NO_CANDIDATES: "There's nobody you can rate yet. You can rate players after you've played a game together with at least 4 players. Submit your games from the menu."
+MY_GAMES: "Your games (page {page}/{pages}). Open a game to see all players or add someone who played."
+MY_GAMES_EMPTY: "You have no games yet. Submit the first one!"
+GAME_ROW: "{date} {time} · {n} 👤"
+BTN_NEW_GAME: "➕ Submit a new game"
+BTN_BACK_GAMES: "« My games"
+GAME_DETAIL: "🏐 Game on <b>{date} at {time}</b>\n\nPlayers ({n}):\n{names}"
+GAME_NOT_COUNTING: "This game will count for ratings once it has at least {min} players."
+BTN_ADD_PLAYERS: "➕ Add players"
+PICK_ADD: "Who else played on <b>{date} at {time}</b>? Tick the players to add. (page {page}/{pages})"
+NO_ONE_TO_ADD: "Everyone is already in this game."
+NEED_ONE: "Select at least one player."
+NOT_IN_GAME: "You can only open games you played in."
+
+NO_CANDIDATES: "There's nobody you can rate yet. You can rate players after you've played a game together with at least 4 players. Add your games in My games."
 CANDIDATES_TOP: "You had a chance to play with these players who really need your rating. Please spend a few minutes to rate them."
 ALL_RATED: "You have recently rated all the players you played with. Thank you! You can still update a rating via \"Show all\"."
 CANDIDATES_ALL: "All players you can rate (page {page}/{pages}):"

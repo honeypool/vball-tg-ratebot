@@ -37,7 +37,7 @@ Run only one `bot.py` per token at a time. A second copy, on this PC or on the s
 1. Someone outside the group gets "This bot only works for members of the group".
 2. `/start` shows the language choice (English / Русский / Latviešu). After that, everything (consent text, menu, rating screen, criteria) is in the chosen language. **🌐 Language** in the menu changes it later.
 3. Consent, then self-rate. The rating screen shows one level at a time and starts at level 0. ◀ / ▶ change the level in the same message. After **✔ Choose N**, the next discipline opens at level N. The tag `[~~X.X]` appears in the group (not for the owner or admins).
-4. Submit a game with 3 players selected: **Done** refuses. Submit it with 4: the game is saved.
+4. **My games** → **Submit a new game** with only yourself selected, or with 2 players but not yourself: **Done** refuses. With yourself and 1 more: the game is saved (it doesn't count for ratings until it has 4). Open it in **My games**, **Add players** to reach 4.
 5. Submit the same game 30 minutes later with one shared player: the bot offers to add the new players to the existing game and creates nothing.
 6. A player already in a 19:00 game is skipped when added to a 19:45 game.
 7. **Rate a player** lists only people you played a counting game (4+ players) with.
@@ -100,7 +100,7 @@ Users who have not consented never get a tag and can't be rated.
 
 ## 5. Main menu
 
-1. Submit a game
+1. My games (with **Submit a new game** inside)
 2. Rate a player
 3. My stats (only shown with ≥3 peer ratings received)
 4. Language
@@ -110,13 +110,19 @@ Admin only: `/export`.
 
 ## 6. Games
 
-### Submit a game (menu 1)
+### My games (menu 1)
+
+A list of every game I played in, newest first, 10 per page. Each button shows the date, time and number of players (`08.11 19:00 · 6 👤`). Below the list: **[Submit a new game]** and **[Menu]**.
+
+Opening a game shows its date, time and all its players (names fetched live), plus "This game will count for ratings once it has at least 4 players." if it has fewer. Buttons: **[Add players]** and **[« My games]**. **Add players** opens the same checkbox list as below, without the players already in the game; at least one must be ticked. The same rules apply (±1h clash, max 100). Only players of a game can open it.
+
+### Submit a new game (inside My games)
 
 Any player can submit a game. There are no join links.
 
 1. The bot asks for the start time: "Enter the **official / announced** start time of the game (e.g. `08.11 19:00` or `08.11.2026 19:00`)." The time is read in `TZ` and stored in UTC. If no year is given, use the current year; if that date is in the future, use the previous year.
 2. The game must be in the past.
-3. **Select the players**: a checkbox list of all consented players (names fetched live, the submitter first and pre-selected, 10 per page). **At least 4 players** must be selected.
+3. **Select the players**: a checkbox list of all consented players (names fetched live, the submitter first and pre-selected, 10 per page). **At least 2 players, including the submitter,** must be selected. Such a game is saved but only **counts** once it has 4+ players (see Rules); more players can be added later from My games.
 4. If a game exists **within ±1 hour that shares at least one selected player**, nothing new is created. The bot shows that game's players and the players to be added, and asks "Submit your participation in a game on 08.11 at 19:00?" with **[Submit] / [Cancel]**. Submitting adds the selected players (the submitter included, if selected) to the existing game. A game in the same hour with no shared players is a different game (e.g. another court) and is created separately.
 5. Otherwise create the game with the selected players.
 6. A player already in **another** game within ±1h is skipped with a note. A game holds at most 100 players.
