@@ -76,7 +76,12 @@ MY_GAMES_EMPTY: "У вас пока нет игр. Добавьте первую
 GAME_ROW: "{date} {time} · 👤 {n}"
 BTN_NEW_GAME: "➕ Добавить новую игру"
 BTN_BACK_GAMES: "« Мои игры"
-GAME_DETAIL: "🏐 Игра <b>{date} в {time}</b>\n\nИгроки (👤 {n}):\n{names}"
+GAME_DETAIL: "🏐 Игра <b>{date} в {time}</b>\n{avg}\n\nИгроки (👤 {n}):\n{names}"
+WEEKDAYS: ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
+GAME_ROW_AVG: " · ⌀ {avg}"
+GAME_AVG: "Средний уровень: <b>{avg}</b>"
+GAME_AVG_PARTIAL: "(оценены {rated} из {n})"
+GAME_AVG_NONE: "Средний уровень: –"
 GAME_NOT_COUNTING: "Игра будет учитываться в оценках, когда в ней будет не менее {min} игроков."
 BTN_ADD_PLAYERS: "➕ Добавить игроков"
 PICK_ADD: "Кто ещё играл <b>{date} в {time}</b>? Отметьте игроков, которых нужно добавить. (стр. {page}/{pages})"

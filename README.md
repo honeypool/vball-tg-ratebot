@@ -115,9 +115,9 @@ Admin only: `/export`.
 
 ### My games (menu 1)
 
-A list of every game I played in, newest first, 10 per page. Each button shows the date, time and number of players (`08.11 19:00 · 👤 6`, with ` ⏳` if my own participation isn't confirmed yet). Below the list: **[Submit a new game]** and **[Menu]**.
+A list of every game I played in, newest first, 10 per page. Each button shows the date with the weekday, time, number of players and the game's average level (`08.11 (Sun) 19:00 · 👤 6 · ⌀ 3.2`; no `⌀` while nobody in it has a level; ` ⏳` if my own participation isn't confirmed yet). Below the list: **[Submit a new game]** and **[Menu]**.
 
-Opening a game shows its date, time and all its players (names fetched live; ⏳ marks players who haven't confirmed yet), plus "This game will count for ratings once it has at least 4 players." if it has fewer. Buttons: **[Add players]** and **[« My games]**. **Add players** opens the same checkbox list as below, without the players already in the game; at least one must be ticked. The same rules apply (±1h clash, max 100). Only players of a game can open it.
+Opening a game shows its date (with weekday) and time, below it the average level ("Average level: 3.2 (4 of 6 players rated)"), and all its players with their current tag, as in the group (`• Anna (@anna) [~3.5]`; names fetched live, tags from `players.tag`; ⏳ marks players who haven't confirmed yet), plus "This game will count for ratings once it has at least 4 players." if it has fewer. Buttons: **[Add players]** and **[« My games]**. **Add players** opens the same checkbox list as below, without the players already in the game; at least one must be ticked. The same rules apply (±1h clash, max 100). Only players of a game can open it.
 
 ### Submit a new game (inside My games)
 
@@ -173,7 +173,9 @@ Show the **top 5 that need my rating**, with "You had a chance to play with thes
 
 ## 8. Level calculation (`rating.py`)
 
-Runs nightly at **00:00 UTC**, in one pass, using **last night's stored levels** as input. Nothing derived is stored except `players.level` and `players.tag_shown`.
+Runs nightly at **00:00 UTC**, in one pass, using **last night's stored levels** as input. Nothing derived is stored except `players.level`, `players.tag`, `players.tag_shown` and the game averages (`games.avg_level`, `games.rated_n`).
+
+**Game average level.** `avg_level` = average of the stored `players.level` over the game's **confirmed** players who have a level (`rated_n` of them); NULL if none has one. It uses players' *current* levels, so it moves as they improve. It is recalculated by `DB.refresh_avg()`, one SQL `UPDATE`: for all games in the nightly run (after levels are stored) and at startup; for one game whenever its confirmed roster changes (new game, players added, a confirmation); for all games when a user is deleted. A player's first self-rating stores their level at once so it shows before the nightly run.
 
 ### Weight of one rating
 
@@ -270,14 +272,17 @@ CREATE TABLE players (
   consent_at   TEXT NOT NULL,          -- UTC ISO
   level        REAL,                   -- last nightly overall level, NULL before first run
   tag_shown    TEXT,                   -- tag currently set in the group
-  lang         TEXT NOT NULL DEFAULT 'en'  -- UI language: en, ru, lv
+  lang         TEXT NOT NULL DEFAULT 'en', -- UI language: en, ru, lv
+  tag          TEXT                    -- current tag text, stored with `level` (shown in game details)
 );
 
 CREATE TABLE games (
   id           INTEGER PRIMARY KEY,
   start_at     TEXT NOT NULL,          -- UTC ISO
   created_by   INTEGER NOT NULL,
-  created_at   TEXT NOT NULL
+  created_at   TEXT NOT NULL,
+  avg_level    REAL,                   -- average players.level of confirmed players with a level
+  rated_n      INTEGER NOT NULL DEFAULT 0  -- how many players that average is over
 );
 
 CREATE TABLE game_players (

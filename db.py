@@ -22,13 +22,16 @@ CREATE TABLE IF NOT EXISTS players (
   consent_at   TEXT NOT NULL,
   level        REAL,
   tag_shown    TEXT,
-  lang         TEXT NOT NULL DEFAULT 'en'   -- UI language: en, ru, lv
+  lang         TEXT NOT NULL DEFAULT 'en',  -- UI language: en, ru, lv
+  tag          TEXT             -- the player's current tag text, e.g. "[~3.5]" (set with `level`)
 );
 CREATE TABLE IF NOT EXISTS games (
   id           INTEGER PRIMARY KEY,
   start_at     TEXT NOT NULL,
   created_by   INTEGER NOT NULL,
-  created_at   TEXT NOT NULL
+  created_at   TEXT NOT NULL,
+  avg_level    REAL,            -- average stored level of confirmed players who have one (see refresh_avg)
+  rated_n      INTEGER NOT NULL DEFAULT 0   -- how many players that average is over
 );
 CREATE TABLE IF NOT EXISTS game_players (
   game_id      INTEGER NOT NULL REFERENCES games(id),
@@ -98,6 +101,7 @@ class DB:
         self.conn.executescript(SCHEMA)
         self._migrate()
         self.conn.executescript(VIEWS)
+        self.refresh_avg()
 
     def _migrate(self) -> None:
         """Bring databases created by older versions up to the current schema."""
@@ -110,6 +114,14 @@ class DB:
             self.conn.execute("ALTER TABLE game_players ADD COLUMN added_by INTEGER")
             self.conn.execute("ALTER TABLE game_players ADD COLUMN confirmed_at TEXT")
             self.conn.execute("UPDATE game_players SET confirmed_at = joined_at")
+        cols = {r["name"] for r in self.q("PRAGMA table_info(players)")}
+        if "tag" not in cols:
+            self.conn.execute("ALTER TABLE players ADD COLUMN tag TEXT")
+            self.conn.execute("UPDATE players SET tag = tag_shown")   # until the next nightly run
+        cols = {r["name"] for r in self.q("PRAGMA table_info(games)")}
+        if "avg_level" not in cols:
+            self.conn.execute("ALTER TABLE games ADD COLUMN avg_level REAL")
+            self.conn.execute("ALTER TABLE games ADD COLUMN rated_n INTEGER NOT NULL DEFAULT 0")
 
     def q(self, sql: str, *args) -> list[sqlite3.Row]:
         return self.conn.execute(sql, args).fetchall()
@@ -140,8 +152,9 @@ class DB:
     def all_players(self) -> list[sqlite3.Row]:
         return self.q("SELECT * FROM players")
 
-    def set_level(self, uid: int, level: float | None) -> None:
-        self.conn.execute("UPDATE players SET level = ? WHERE telegram_id = ?", (level, uid))
+    def set_level(self, uid: int, level: float | None, tag: str | None = None) -> None:
+        """Store a player's level and tag text. Call refresh_avg() afterwards."""
+        self.conn.execute("UPDATE players SET level = ?, tag = ? WHERE telegram_id = ?", (level, tag, uid))
 
     def set_tag_shown(self, uid: int, tag: str | None) -> None:
         self.conn.execute("UPDATE players SET tag_shown = ? WHERE telegram_id = ?", (tag, uid))
@@ -152,7 +165,25 @@ class DB:
             self.conn.execute("DELETE FROM ratings WHERE player_id = ? OR rater_id = ?", (uid, uid))
             self.conn.execute("DELETE FROM game_players WHERE player_id = ?", (uid,))
             self.conn.execute("UPDATE game_players SET added_by = NULL WHERE added_by = ?", (uid,))
-            return self.conn.execute("DELETE FROM players WHERE telegram_id = ?", (uid,)).rowcount > 0
+            existed = self.conn.execute("DELETE FROM players WHERE telegram_id = ?", (uid,)).rowcount > 0
+            self.refresh_avg()
+            return existed
+
+    def refresh_avg(self, game_id: int | None = None) -> None:
+        """Recompute games.avg_level / rated_n from the stored players.level of confirmed players.
+        game_id=None: every game (nightly, after levels change). One statement either way."""
+        lv = """FROM played x JOIN players p ON p.telegram_id = x.player_id WHERE x.game_id = games.id"""
+        sql = f"UPDATE games SET avg_level = (SELECT AVG(p.level) {lv}), rated_n = (SELECT COUNT(p.level) {lv})"
+        if game_id is None:
+            self.conn.execute(sql)
+        else:
+            self.conn.execute(sql + " WHERE id = ?", (game_id,))
+
+    def game_players(self, game_id: int) -> list[sqlite3.Row]:
+        """Everyone in the game with `pending` and their stored `tag`."""
+        return self.q("""SELECT x.player_id, x.confirmed_at IS NULL AS pending, p.tag
+                         FROM game_players x JOIN players p ON p.telegram_id = x.player_id
+                         WHERE x.game_id = ?""", game_id)
 
     # --- games ---------------------------------------------------------------
     def game(self, game_id: int) -> sqlite3.Row | None:
@@ -186,11 +217,15 @@ class DB:
         with self.tx():
             gid = self.conn.execute("INSERT INTO games (start_at, created_by, created_at) VALUES (?, ?, ?)",
                                     (iso(start), creator, iso(now()))).lastrowid
-            return gid, self._add(gid, start, uids, creator)
+            res = self._add(gid, start, uids, creator)
+            self.refresh_avg(gid)
+            return gid, res
 
     def add_players(self, game_id: int, uids: list[int], adder: int) -> Added:
         with self.tx():
-            return self._add(game_id, parse(self.game(game_id)["start_at"]), uids, adder)
+            res = self._add(game_id, parse(self.game(game_id)["start_at"]), uids, adder)
+            self.refresh_avg(game_id)
+            return res
 
     def _add(self, game_id: int, start: datetime, uids: list[int], adder: int) -> Added:
         """Adds players who are not in it yet. Skips anyone in another game within ±1h (pending ones too), and
@@ -218,7 +253,8 @@ class DB:
 
     def recent_games(self, uid: int, limit: int = 10) -> list[sqlite3.Row]:
         """The player's games, newest first, with player count `n`. limit=-1: all of them."""
-        return self.q("""SELECT g.id, g.start_at, (SELECT COUNT(*) FROM game_players WHERE game_id = g.id) AS n,
+        return self.q("""SELECT g.id, g.start_at, g.avg_level,
+                           (SELECT COUNT(*) FROM game_players WHERE game_id = g.id) AS n,
                            gp.confirmed_at IS NULL AS mine_pending
                          FROM games g JOIN game_players gp ON gp.game_id = g.id
                          WHERE gp.player_id = ? ORDER BY g.start_at DESC LIMIT ?""", uid, limit)
@@ -226,9 +262,12 @@ class DB:
     # --- confirmations (README §6) ----------------------------------------------
     def confirm(self, game_id: int, uid: int) -> bool:
         """Mark a pending participation as confirmed. False if it isn't pending (any more)."""
-        return self.conn.execute("""UPDATE game_players SET confirmed_at = ?
-                                    WHERE game_id = ? AND player_id = ? AND confirmed_at IS NULL""",
-                                 (iso(now()), game_id, uid)).rowcount > 0
+        ok = self.conn.execute("""UPDATE game_players SET confirmed_at = ?
+                                  WHERE game_id = ? AND player_id = ? AND confirmed_at IS NULL""",
+                               (iso(now()), game_id, uid)).rowcount > 0
+        if ok:
+            self.refresh_avg(game_id)
+        return ok
 
     def remove_pending(self, game_id: int, uid: int) -> sqlite3.Row | None:
         """Delete a pending participation and return it (with `added_by`); None if it wasn't pending."""

@@ -13,6 +13,8 @@ PLACEHOLDER = re.compile(r"\{(\w+)")
 def placeholders(value) -> set[str]:
     if isinstance(value, dict):
         return {p for v in value.values() for p in placeholders(v)}
+    if isinstance(value, list):
+        return {p for v in value for p in placeholders(v)}
     return set(PLACEHOLDER.findall(value))
 
 
@@ -23,6 +25,7 @@ def test_locale_has_same_keys_and_placeholders(lang):
     for key in en:
         assert placeholders(other[key]) == placeholders(en[key]), key
     assert set(other["DISCIPLINES"]) == set(DISCIPLINES)
+    assert len(other["WEEKDAYS"]) == 7
 
 
 @pytest.mark.parametrize("lang", T.LANGS)

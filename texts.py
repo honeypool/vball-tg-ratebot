@@ -52,6 +52,11 @@ def discipline(lang: str, key: str) -> str:
     return STRINGS[norm(lang)]["DISCIPLINES"][key]
 
 
+def weekday(lang: str, i: int) -> str:
+    """Short weekday name, i = 0 (Monday) .. 6."""
+    return STRINGS[norm(lang)]["WEEKDAYS"][i]
+
+
 def criteria(lang: str, level: int, key: str) -> str:
     return " ".join(CRITERIA[norm(lang)][level][key].split())
 

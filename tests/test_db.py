@@ -205,3 +205,24 @@ def test_migration_marks_old_participation_confirmed(tmp_path):
     c.close()
     d = DB(path)
     assert d.pending_ids(1) == set() and d.together(1, 2)[0] == 1
+    assert d.game(1)["avg_level"] is None and d.player(1)["tag"] is None
+
+
+def test_game_average_level_follows_levels_and_roster(db):
+    gid = game_with(db, [1, 2, 3], now() - H)
+    assert db.game(gid)["avg_level"] is None and db.game(gid)["rated_n"] == 0
+    db.set_level(1, 2.0, "[~2.0]")
+    db.set_level(2, 4.0, "[4.0]")
+    db.refresh_avg()                                   # nightly
+    g = db.game(gid)
+    assert g["avg_level"] == 3.0 and g["rated_n"] == 2 and g["n"] == 3
+    assert db.recent_games(1)[0]["avg_level"] == 3.0
+    assert {r["player_id"]: r["tag"] for r in db.game_players(gid)} == {1: "[~2.0]", 2: "[4.0]", 3: None}
+
+    db.set_level(4, 6.0, "[6.0]")
+    db.add_players(gid, [4], 1)                        # pending: not in the average yet
+    assert db.game(gid)["avg_level"] == 3.0
+    db.confirm(gid, 4)
+    assert db.game(gid)["avg_level"] == 4.0 and db.game(gid)["rated_n"] == 3
+    db.delete_user(2)
+    assert db.game(gid)["avg_level"] == 4.0 and db.game(gid)["rated_n"] == 2      # (2 + 6) / 2

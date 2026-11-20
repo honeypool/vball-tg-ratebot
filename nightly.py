@@ -48,7 +48,8 @@ async def run(bot: Bot, db: DB, group_id: int) -> None:
     with db.tx():
         for p in players:
             r = results.get(p["telegram_id"])
-            db.set_level(p["telegram_id"], r.level if r else None)
+            db.set_level(p["telegram_id"], r.level if r else None, r.tag if r else None)
+        db.refresh_avg()
 
     changed = 0
     for p in players:

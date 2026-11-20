@@ -119,6 +119,12 @@ def fmt_local(start_at: str) -> tuple[str, str]:
     return t.strftime("%d.%m"), t.strftime("%H:%M")
 
 
+def fmt_day(start_at: str, lang: str) -> tuple[str, str]:
+    """Like fmt_local, with the local weekday: ("08.11 (Sun)", "19:00")."""
+    date, hm = fmt_local(start_at)
+    return f"{date} ({T.weekday(lang, parse(start_at).astimezone(TZ).weekday())})", hm
+
+
 def keyboard(rows: list[list[tuple[str, CallbackData]]]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t, callback_data=cd.pack()) for t, cd in row] for row in rows])
@@ -338,14 +344,17 @@ def parse_game_time(text: str, now_utc: datetime) -> datetime | None:
     return t.astimezone(timezone.utc)
 
 
-def games_screen(games: list, page: int, tr: Tr) -> tuple[str, InlineKeyboardMarkup]:
+def games_screen(games: list, page: int, tr: Tr, lang: str) -> tuple[str, InlineKeyboardMarkup]:
     """My games: one button per game (newest first), then [Submit a new game] and [Menu]."""
     pages = max(1, -(-len(games) // PAGE_SIZE))
     page = max(0, min(page, pages - 1))
     rows = []
     for g in games[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
-        date, hm = fmt_local(g["start_at"])
-        label = tr("GAME_ROW", date=date, time=hm, n=g["n"]) + (" ⏳" if g["mine_pending"] else "")
+        date, hm = fmt_day(g["start_at"], lang)
+        label = tr("GAME_ROW", date=date, time=hm, n=g["n"])
+        if g["avg_level"] is not None:
+            label += tr("GAME_ROW_AVG", avg=f"{g['avg_level']:.1f}")
+        label += " ⏳" if g["mine_pending"] else ""
         rows.append([(label, MyGames(kind="open", value=g["id"]))])
     nav = []
     if page > 0:
@@ -363,7 +372,7 @@ def games_screen(games: list, page: int, tr: Tr) -> tuple[str, InlineKeyboardMar
 async def show_games(message: Message, uid: int, page: int, tr: Tr, edit: bool = False):
     if not ready(uid):
         return await message.answer(tr("EXPIRED"))
-    text, markup = games_screen(db.recent_games(uid, limit=-1), page, tr)
+    text, markup = games_screen(db.recent_games(uid, limit=-1), page, tr, lang_of(uid))
     if edit:
         await message.edit_text(text, reply_markup=markup)
     else:
@@ -383,16 +392,27 @@ def my_game(uid: int, gid: int):
     return g if g and uid in db.game_player_ids(gid) else None
 
 
+def game_detail_text(g, people: list, tr: Tr, lang: str) -> str:
+    """Date (weekday), average level, then "• Name [tag]" per player. people: (name, game_players row)."""
+    date, hm = fmt_day(g["start_at"], lang)
+    if g["avg_level"] is None:
+        avg = tr("GAME_AVG_NONE")
+    else:
+        avg = tr("GAME_AVG", avg=f"{g['avg_level']:.1f}")
+        if g["rated_n"] < g["n"]:
+            avg += " " + tr("GAME_AVG_PARTIAL", rated=g["rated_n"], n=g["n"])
+    lines = [f"{'⏳' if r['pending'] else '•'} {html.escape(name)}"
+             + (f" {html.escape(r['tag'])}" if r["tag"] else "") for name, r in people]
+    return tr("GAME_DETAIL", date=date, time=hm, avg=avg, n=len(people), names="\n".join(lines))
+
+
 async def show_game(message: Message, bot: Bot, uid: int, gid: int, tr: Tr, lang: str):
     """One game: date, time and every player, with [Add players] and [« My games]."""
     g = db.game(gid)
-    date, hm = fmt_local(g["start_at"])
-    ids, pending = db.game_player_ids(gid), db.pending_ids(gid)
-    names = await asyncio.gather(*(name_of(bot, p, lang) for p in ids))
-    people = sorted(zip(names, ids), key=lambda p: p[0].casefold())
-    text = tr("GAME_DETAIL", date=date, time=hm, n=len(ids),
-              names="\n".join(f"{'⏳' if pid in pending else '•'} {html.escape(n)}" for n, pid in people))
-    if pending:
+    rows = db.game_players(gid)
+    names = await asyncio.gather(*(name_of(bot, r["player_id"], lang) for r in rows))
+    text = game_detail_text(g, sorted(zip(names, rows), key=lambda p: p[0].casefold()), tr, lang)
+    if g["pending"]:
         text += "\n\n" + tr("PENDING_NOTE")
     if g["n"] < MIN_COUNTING_PLAYERS:
         text += "\n\n" + tr("GAME_NOT_COUNTING", min=MIN_COUNTING_PLAYERS)
@@ -867,6 +887,9 @@ async def finish_self_rating(message: Message, state: FSMContext, uid: int, scor
         await message.answer(tr("SELF_RATE_REQUIRED"))
         return await begin_rating(message, state, lang, target=uid, is_self=True, name="")
     r = live_levels()[uid]
+    if db.player(uid)["level"] is None:       # first rating: show it in games before the nightly run
+        db.set_level(uid, r.level, r.tag)
+        db.refresh_avg()
     shown = await nightly.set_tag(bot, GROUP_ID, uid, r.tag)
     if shown:
         db.set_tag_shown(uid, r.tag)

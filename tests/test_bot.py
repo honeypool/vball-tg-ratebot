@@ -100,23 +100,24 @@ def game_buttons(kb):
 
 def test_my_games_screen_lists_games_and_new_game_button():
     tr = lambda k, **kw: T.t("en", k, **kw)
-    games = [{"id": 7, "start_at": "2026-11-08T17:00:00Z", "n": 2, "mine_pending": 0},
-             {"id": 8, "start_at": "2026-11-01T17:00:00Z", "n": 5, "mine_pending": 1}]
-    text, kb = bot.games_screen(games, 0, tr)
+    games = [{"id": 7, "start_at": "2026-11-08T17:00:00Z", "n": 2, "mine_pending": 0, "avg_level": 3.24},
+             {"id": 8, "start_at": "2026-11-01T17:00:00Z", "n": 5, "mine_pending": 1, "avg_level": None}]
+    text, kb = bot.games_screen(games, 0, tr, "en")
     rows = game_buttons(kb)
     assert text.startswith("Your games (page 1/1)")
-    assert rows[0] == [("08.11 19:00 · 👤 2", bot.MyGames(kind="open", value=7).pack())]
-    assert rows[1][0][0] == "01.11 19:00 · 👤 5 ⏳"                       # my participation not confirmed yet
+    assert rows[0] == [("08.11 (Sun) 19:00 · 👤 2 · ⌀ 3.2", bot.MyGames(kind="open", value=7).pack())]
+    assert rows[1][0][0] == "01.11 (Sun) 19:00 · 👤 5 ⏳"                 # no average without rated players                       # my participation not confirmed yet
     assert rows[2] == [("➕ Submit a new game", bot.Menu(action="submit").pack())]
     assert rows[3][0][0] == "« Menu"
 
 
 def test_my_games_empty_and_paging():
     tr = lambda k, **kw: T.t("en", k, **kw)
-    text, kb = bot.games_screen([], 0, tr)
+    text, kb = bot.games_screen([], 0, tr, "en")
     assert text == T.t("en", "MY_GAMES_EMPTY") and len(kb.inline_keyboard) == 2
-    games = [{"id": i, "start_at": "2026-11-08T17:00:00Z", "n": 4, "mine_pending": 0} for i in range(12)]
-    text, kb = bot.games_screen(games, 1, tr)
+    games = [{"id": i, "start_at": "2026-11-08T17:00:00Z", "n": 4, "mine_pending": 0, "avg_level": None}
+             for i in range(12)]
+    text, kb = bot.games_screen(games, 1, tr, "en")
     rows = game_buttons(kb)
     assert "page 2/2" in text and len(rows) == 2 + 3        # 2 games, ◀, new game, menu
     assert rows[2] == [("◀", bot.MyGames(kind="list", value=0).pack())]
@@ -129,3 +130,17 @@ def test_admin_notice_names_both_players():
     assert "answered \"I didn't play\"" in text
     text = bot.admin_notice_text("lv", 12, "2026-11-08T17:00:00Z", "Bob", 22, "Anna", None, said_no=False)
     assert "nav atbildes 48 stundu laikā" in text and "(id –)" in text
+
+
+def test_game_detail_weekday_average_and_tags():
+    tr = lambda k, **kw: T.t("en", k, **kw)
+    g = {"start_at": "2026-11-08T17:00:00Z", "avg_level": 3.24, "rated_n": 2, "n": 3}
+    people = [("Anna <a>", {"pending": 0, "tag": "[~3.5]"}), ("Bob", {"pending": 0, "tag": "[3.0]"}),
+              ("Carl", {"pending": 0, "tag": None}), ("Dan", {"pending": 1, "tag": "[~~2.0]"})]
+    text = bot.game_detail_text(g, people, tr, "en")
+    assert text.startswith("🏐 Game on <b>08.11 (Sun) at 19:00</b>\n"
+                           "Average level: <b>3.2</b> (2 of 3 players rated)\n\n")
+    assert "• Anna &lt;a&gt; [~3.5]\n• Bob [3.0]\n• Carl\n⏳ Dan [~~2.0]" in text
+    ru = lambda k, **kw: T.t("ru", k, **kw)
+    text = bot.game_detail_text({**g, "avg_level": None, "rated_n": 0}, people[2:3], ru, "ru")
+    assert "08.11 (вс)" in text and "Средний уровень: –" in text
