@@ -38,6 +38,8 @@ Run only one `bot.py` per token at a time. A second copy, on this PC or on the s
 2. `/start` shows the language choice (English / Русский / Latviešu). After that, everything (consent text, menu, rating screen, criteria) is in the chosen language. **🌐 Language** in the menu changes it later.
 3. Consent, then self-rate. The rating screen shows one level at a time and starts at level 0. ◀ / ▶ change the level in the same message. After **✔ Choose N**, the next discipline opens at level N. The tag `[~~X.X]` appears in the group (not for the owner or admins).
 4. **My games** → **Submit a new game** with only yourself selected, or with 2 players but not yourself: **Done** refuses. With yourself and 1 more: the game is saved (it doesn't count for ratings until it has 4). Open it in **My games**, **Add players** to reach 4.
+4a. Each added player gets "Did you play?". **Yes** → they count. **No** → removed, and the admin gets a notice naming both players. Leave one unanswered (set `CONFIRM_WITHIN` to 2 minutes for the test) → removed and the admin is notified.
+4b. In the player list, send the contact of a consented player → they're ticked. Send the contact of someone who hasn't joined → the invite message. `/export` contains no phone numbers.
 5. Submit the same game 30 minutes later with one shared player: the bot offers to add the new players to the existing game and creates nothing.
 6. A player already in a 19:00 game is skipped when added to a 19:45 game.
 7. **Rate a player** lists only people you played a counting game (4+ players) with.
@@ -84,7 +86,8 @@ UI languages: **English, Russian, Latvian.** `en` is the reference: the other lo
 ## 3. Privacy
 
 - Stored per user: Telegram ID, consent time, UI language, ratings, game participation. **Names are not stored.** When a screen needs a name, fetch it live with `getChatMember` (`first_name`, plus `@username` if present).
-- Game records contain only the start time and the participants.
+- Game records contain only the start time and the participants (who added whom, and whether they confirmed).
+- **Shared contacts** are used only to read the Telegram user id of the person to add. The phone number and contact name are never stored or logged.
 - If the database leaks, the most sensitive information is who played with whom.
 
 ## 4. Onboarding
@@ -112,9 +115,9 @@ Admin only: `/export`.
 
 ### My games (menu 1)
 
-A list of every game I played in, newest first, 10 per page. Each button shows the date, time and number of players (`08.11 19:00 · 6 👤`). Below the list: **[Submit a new game]** and **[Menu]**.
+A list of every game I played in, newest first, 10 per page. Each button shows the date, time and number of players (`08.11 19:00 · 👤 6`, with ` ⏳` if my own participation isn't confirmed yet). Below the list: **[Submit a new game]** and **[Menu]**.
 
-Opening a game shows its date, time and all its players (names fetched live), plus "This game will count for ratings once it has at least 4 players." if it has fewer. Buttons: **[Add players]** and **[« My games]**. **Add players** opens the same checkbox list as below, without the players already in the game; at least one must be ticked. The same rules apply (±1h clash, max 100). Only players of a game can open it.
+Opening a game shows its date, time and all its players (names fetched live; ⏳ marks players who haven't confirmed yet), plus "This game will count for ratings once it has at least 4 players." if it has fewer. Buttons: **[Add players]** and **[« My games]**. **Add players** opens the same checkbox list as below, without the players already in the game; at least one must be ticked. The same rules apply (±1h clash, max 100). Only players of a game can open it.
 
 ### Submit a new game (inside My games)
 
@@ -128,11 +131,20 @@ Any player can submit a game. There are no join links.
 6. A player already in **another** game within ±1h is skipped with a note. A game holds at most 100 players.
 7. Reply with "Saved. The game … has N players." and a **[Rate players]** button.
 
+In both player lists (new game and Add players), a player can also be added by **sending their contact** (📎 → Contact). The bot reads only the contact's Telegram user id. If the contact has no Telegram account, or that person hasn't consented yet, nothing is added: the bot says so and suggests inviting them with the bot link (they must press Start, give consent and be a member of the group).
+
 The game record still holds only the start time and the players.
+
+### Confirming participation
+
+- Whoever adds players is confirmed at once. **Everyone else they add must confirm**: the bot sends them (in their language) "{name} added you to the game on 08.11 at 19:00. Did you play in it?" with **[✅ Yes, I played] [❌ No, I didn't]**. Submitting your own participation in an existing game also confirms you.
+- **Yes**: confirmed. **No**: removed from the game at once. **No answer within 48 hours** (checked every 10 minutes): removed, and told so.
+- Each removal sends the bot admin (`ADMIN_ID`) a notice: the game (id, date, time), the removed player and who added them (live names, @usernames and ids) and the reason ("answered 'I didn't play'" / "no answer within 48 hours").
+- **Pending players don't count**: not for "games together", the counting threshold, rate candidates or weights. All calculations read the `played` view (confirmed rows only). Clash checks and the 100-player limit do include pending players.
 
 ### Rules
 
-- A game **counts** (for "games together" and weights) only if it has **≥4 players**. Games with fewer players are kept but ignored in all calculations.
+- A game **counts** (for "games together" and weights) only if it has **≥4 confirmed players**. Games with fewer players are kept but ignored in all calculations.
 - Max 100 players per game.
 
 ## 7. Rating
@@ -272,8 +284,11 @@ CREATE TABLE game_players (
   game_id      INTEGER NOT NULL REFERENCES games(id),
   player_id    INTEGER NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
   joined_at    TEXT NOT NULL,
+  added_by     INTEGER,          -- who added this player; NULL = added themselves
+  confirmed_at TEXT,             -- NULL = waiting for the player to confirm
   PRIMARY KEY (game_id, player_id)
 );
+CREATE VIEW played AS SELECT * FROM game_players WHERE confirmed_at IS NOT NULL;
 
 CREATE TABLE ratings (
   player_id     INTEGER NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,

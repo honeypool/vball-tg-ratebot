@@ -100,21 +100,32 @@ def game_buttons(kb):
 
 def test_my_games_screen_lists_games_and_new_game_button():
     tr = lambda k, **kw: T.t("en", k, **kw)
-    games = [{"id": 7, "start_at": "2026-11-08T17:00:00Z", "n": 2}]
+    games = [{"id": 7, "start_at": "2026-11-08T17:00:00Z", "n": 2, "mine_pending": 0},
+             {"id": 8, "start_at": "2026-11-01T17:00:00Z", "n": 5, "mine_pending": 1}]
     text, kb = bot.games_screen(games, 0, tr)
     rows = game_buttons(kb)
     assert text.startswith("Your games (page 1/1)")
-    assert rows[0] == [("08.11 19:00 · 2 👤", bot.MyGames(kind="open", value=7).pack())]
-    assert rows[1] == [("➕ Submit a new game", bot.Menu(action="submit").pack())]
-    assert rows[2][0][0] == "« Menu"
+    assert rows[0] == [("08.11 19:00 · 👤 2", bot.MyGames(kind="open", value=7).pack())]
+    assert rows[1][0][0] == "01.11 19:00 · 👤 5 ⏳"                       # my participation not confirmed yet
+    assert rows[2] == [("➕ Submit a new game", bot.Menu(action="submit").pack())]
+    assert rows[3][0][0] == "« Menu"
 
 
 def test_my_games_empty_and_paging():
     tr = lambda k, **kw: T.t("en", k, **kw)
     text, kb = bot.games_screen([], 0, tr)
     assert text == T.t("en", "MY_GAMES_EMPTY") and len(kb.inline_keyboard) == 2
-    games = [{"id": i, "start_at": "2026-11-08T17:00:00Z", "n": 4} for i in range(12)]
+    games = [{"id": i, "start_at": "2026-11-08T17:00:00Z", "n": 4, "mine_pending": 0} for i in range(12)]
     text, kb = bot.games_screen(games, 1, tr)
     rows = game_buttons(kb)
     assert "page 2/2" in text and len(rows) == 2 + 3        # 2 games, ◀, new game, menu
     assert rows[2] == [("◀", bot.MyGames(kind="list", value=0).pack())]
+
+
+def test_admin_notice_names_both_players():
+    text = bot.admin_notice_text("en", 12, "2026-11-08T17:00:00Z", "Bob @bob", 22, "Anna <a>", 11, said_no=True)
+    assert "Game #12: 08.11 19:00" in text
+    assert "Removed player: Bob @bob (id 22)" in text and "Added by: Anna &lt;a&gt; (id 11)" in text
+    assert "answered \"I didn't play\"" in text
+    text = bot.admin_notice_text("lv", 12, "2026-11-08T17:00:00Z", "Bob", 22, "Anna", None, said_no=False)
+    assert "nav atbildes 48 stundu laikā" in text and "(id –)" in text

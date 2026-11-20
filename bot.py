@@ -54,6 +54,8 @@ RERATE_AFTER = timedelta(days=90)  # "needs my rating" again after this long
 TOP_N = 5                          # candidates on the first screen
 PAGE_SIZE = 10                     # candidates per page in "Show all"
 STATS_MIN_PEERS = 3                # peer ratings needed to see "My stats"
+CONFIRM_WITHIN = timedelta(hours=48)  # an added player must confirm within this, or is removed
+EXPIRY_CHECK_SECONDS = 600
 MEMBER_CACHE_SECONDS = 300
 FIRST_LEVEL = 0                    # level shown first on the rating screen
 
@@ -75,6 +77,11 @@ class Lang(CallbackData, prefix="l"):
 class MyGames(CallbackData, prefix="mg"):
     kind: str          # list (value = page), open (value = game id), add (value = game id)
     value: int
+
+
+class Confirm(CallbackData, prefix="c"):
+    gid: int
+    yes: int           # 1 = I played, 0 = I didn't
 
 
 class GamePick(CallbackData, prefix="g"):
@@ -338,7 +345,8 @@ def games_screen(games: list, page: int, tr: Tr) -> tuple[str, InlineKeyboardMar
     rows = []
     for g in games[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
         date, hm = fmt_local(g["start_at"])
-        rows.append([(tr("GAME_ROW", date=date, time=hm, n=g["n"]), MyGames(kind="open", value=g["id"]))])
+        label = tr("GAME_ROW", date=date, time=hm, n=g["n"]) + (" ⏳" if g["mine_pending"] else "")
+        rows.append([(label, MyGames(kind="open", value=g["id"]))])
     nav = []
     if page > 0:
         nav.append(("◀", MyGames(kind="list", value=page - 1)))
@@ -379,10 +387,13 @@ async def show_game(message: Message, bot: Bot, uid: int, gid: int, tr: Tr, lang
     """One game: date, time and every player, with [Add players] and [« My games]."""
     g = db.game(gid)
     date, hm = fmt_local(g["start_at"])
-    names = sorted(await asyncio.gather(*(name_of(bot, p, lang) for p in db.game_player_ids(gid))),
-                   key=str.casefold)
-    text = tr("GAME_DETAIL", date=date, time=hm, n=g["n"],
-              names="\n".join(f"• {html.escape(n)}" for n in names))
+    ids, pending = db.game_player_ids(gid), db.pending_ids(gid)
+    names = await asyncio.gather(*(name_of(bot, p, lang) for p in ids))
+    people = sorted(zip(names, ids), key=lambda p: p[0].casefold())
+    text = tr("GAME_DETAIL", date=date, time=hm, n=len(ids),
+              names="\n".join(f"{'⏳' if pid in pending else '•'} {html.escape(n)}" for n, pid in people))
+    if pending:
+        text += "\n\n" + tr("PENDING_NOTE")
     if g["n"] < MIN_COUNTING_PLAYERS:
         text += "\n\n" + tr("GAME_NOT_COUNTING", min=MIN_COUNTING_PLAYERS)
     await message.edit_text(text, reply_markup=keyboard([
@@ -468,10 +479,39 @@ async def render_picker(message: Message, state: FSMContext, bot: Bot, me: int, 
             rows = rows[-1:]   # only [Cancel]
     else:
         text = tr("PICK_PLAYERS", date=date, time=hm, min=MIN_SUBMIT_PLAYERS, page=page + 1, pages=pages)
+    text += "\n\n" + tr("CONTACT_HINT")
     if edit:
         await message.edit_text(text, reply_markup=keyboard(rows))
+        await state.update_data(picker=message.message_id)
     else:
-        await message.answer(text, reply_markup=keyboard(rows))
+        sent = await message.answer(text, reply_markup=keyboard(rows))
+        await state.update_data(picker=sent.message_id)
+
+
+@router.message(Flow.game_players, F.contact)
+async def on_contact(message: Message, state: FSMContext, bot: Bot, tr: Tr, lang: str):
+    """A shared contact ticks that player in the picker. Only contact.user_id is read; nothing about the
+    contact (phone, name) is stored or logged."""
+    contact, data = message.contact, await state.get_data()
+    selected: list[int] = data["selected"]
+    pid = contact.user_id
+    if pid is None:
+        await message.answer(tr("CONTACT_NO_ACCOUNT"))
+    elif db.player(pid) is None:
+        link = f"https://t.me/{(await bot.me()).username}"
+        await message.answer(tr("CONTACT_NOT_JOINED", name=html.escape(contact.first_name or tr("PLAYER")),
+                                link=link), disable_web_page_preview=True)
+    elif pid in selected or (data.get("game") and pid in db.game_player_ids(data["game"])):
+        await message.answer(tr("CONTACT_ALREADY", name=html.escape(await name_of(bot, pid, lang))))
+    elif len(selected) < MAX_PLAYERS:
+        selected.append(pid)
+        await state.update_data(selected=selected)
+        await message.answer(tr("CONTACT_ADDED", name=html.escape(await name_of(bot, pid, lang))))
+    if data.get("picker"):   # move the picker below the contact so it stays in view
+        with suppress(TelegramBadRequest):
+            await bot.edit_message_reply_markup(chat_id=message.chat.id, message_id=data["picker"],
+                                                reply_markup=None)
+    await render_picker(message, state, bot, message.from_user.id, tr, lang)
 
 
 @router.callback_query(Flow.game_players, GamePick.filter())
@@ -510,7 +550,7 @@ async def on_game_pick(cb: CallbackQuery, callback_data: GamePick, state: FSMCon
         await cb.message.edit_reply_markup(reply_markup=None)
         if my_game(uid, gid) is None:
             return await cb.message.answer(tr("NOT_IN_GAME"), reply_markup=home_kb(tr))
-        return await report_saved(cb.message, bot, gid, db.add_players(gid, selected), tr, lang)
+        return await report_saved(cb.message, bot, uid, gid, db.add_players(gid, selected, uid), tr, lang)
 
     start = parse(data["start"])
     if kind == "done":
@@ -519,7 +559,7 @@ async def on_game_pick(cb: CallbackQuery, callback_data: GamePick, state: FSMCon
         if game is None:
             await state.clear()
             gid, res = db.create_game(start, uid, selected)
-            return await report_saved(cb.message, bot, gid, res, tr, lang)
+            return await report_saved(cb.message, bot, uid, gid, res, tr, lang)
         date, hm = fmt_local(game["start_at"])
         existing = db.game_player_ids(game["id"])
         new = [p for p in selected if p not in existing]
@@ -535,13 +575,19 @@ async def on_game_pick(cb: CallbackQuery, callback_data: GamePick, state: FSMCon
     elif kind == "add":
         await state.clear()
         await cb.message.edit_reply_markup(reply_markup=None)
-        await report_saved(cb.message, bot, value, db.add_players(value, selected), tr, lang)
+        res = db.add_players(value, selected, uid)
+        if uid in selected:
+            db.confirm(value, uid)   # submitting my own participation confirms it
+        await report_saved(cb.message, bot, uid, value, res, tr, lang)
 
 
-async def report_saved(message: Message, bot: Bot, gid: int, res: Added, tr: Tr, lang: str):
+async def report_saved(message: Message, bot: Bot, adder: int, gid: int, res: Added, tr: Tr, lang: str):
     g = db.game(gid)
     date, hm = fmt_local(g["start_at"])
-    lines = [tr("GAME_SAVED", date=date, time=hm, n=g["n"])]
+    others = [p for p in res.added if p != adder]
+    lines = [tr("GAME_SAVED", date=date, time=hm, n=g["n"] + g["pending"])]
+    if others:
+        lines.append(tr("CONFIRM_ASKED", hours=int(CONFIRM_WITHIN.total_seconds() // 3600)))
     if res.clash:
         lines.append(tr("SKIPPED_CLASH", names=await names_list(bot, res.clash, lang)))
     if res.full:
@@ -551,6 +597,101 @@ async def report_saved(message: Message, bot: Bot, gid: int, res: Added, tr: Tr,
     await message.answer("\n\n".join(lines), reply_markup=keyboard([
         [(tr("BTN_RATE_PLAYERS"), Menu(action="rate"))],
         [(tr("BTN_BACK_GAMES"), MyGames(kind="list", value=0))]]))
+    await ask_confirmations(message.bot, gid, adder, others)
+
+
+# --- confirming participation (README §6) ------------------------------------------
+def lang_of(uid: int) -> str:
+    p = db.player(uid)
+    return T.norm(p["lang"]) if p else T.DEFAULT
+
+
+async def ask_confirmations(bot: Bot, gid: int, adder: int, pids: list[int]) -> None:
+    """Ask every player someone else added whether they really played."""
+    g = db.game(gid)
+    hours = int(CONFIRM_WITHIN.total_seconds() // 3600)
+    for pid in pids:
+        lang = lang_of(pid)
+        tr = partial(T.t, lang)
+        date, hm = fmt_local(g["start_at"])
+        try:
+            await bot.send_message(pid, tr("CONFIRM_ASK", adder=html.escape(await name_of(bot, adder, lang)),
+                                           date=date, time=hm, hours=hours),
+                                   reply_markup=keyboard([[(tr("BTN_CONFIRM_YES"), Confirm(gid=gid, yes=1)),
+                                                           (tr("BTN_CONFIRM_NO"), Confirm(gid=gid, yes=0))]]))
+        except TelegramAPIError as e:   # e.g. blocked the bot: stays pending and expires
+            log.warning("confirmation request to %s failed: %s", pid, e)
+
+
+def admin_notice_text(lang: str, gid: int, start_at: str, player: str, player_id: int, adder: str,
+                      adder_id: int | None, said_no: bool) -> str:
+    tr = partial(T.t, lang)
+    date, hm = fmt_local(start_at)
+    reason = tr("REASON_SAID_NO") if said_no else tr("REASON_NO_ANSWER",
+                                                   hours=int(CONFIRM_WITHIN.total_seconds() // 3600))
+    return tr("ADMIN_NOT_CONFIRMED", gid=gid, date=date, time=hm, player=html.escape(player), player_id=player_id,
+              adder=html.escape(adder), adder_id=adder_id if adder_id is not None else "–", reason=reason)
+
+
+async def notify_admin(bot: Bot, row, said_no: bool) -> None:
+    """Tell the bot admin a player was removed from a game they were added to by someone else."""
+    if not ADMIN_ID:
+        return
+    g = db.game(row["game_id"])
+    if g is None:
+        return
+    lang = lang_of(ADMIN_ID)
+    adder_id = row["added_by"]
+    player = await name_of(bot, row["player_id"], lang)
+    adder = await name_of(bot, adder_id, lang) if adder_id is not None else T.t(lang, "PLAYER")
+    try:
+        await bot.send_message(ADMIN_ID, admin_notice_text(lang, g["id"], g["start_at"], player, row["player_id"],
+                                                           adder, adder_id, said_no))
+    except TelegramAPIError as e:
+        log.warning("admin notice failed: %s", e)
+
+
+@router.callback_query(Confirm.filter())
+async def on_confirm(cb: CallbackQuery, callback_data: Confirm, bot: Bot, tr: Tr):
+    await cb.answer()
+    uid, gid = cb.from_user.id, callback_data.gid
+    g = db.game(gid)
+    when = dict(zip(("date", "time"), fmt_local(g["start_at"]))) if g else {}
+    if callback_data.yes:
+        ok = db.confirm(gid, uid)
+        return await cb.message.edit_text(tr("CONFIRM_THANKS", **when) if ok else tr("CONFIRM_EXPIRED"))
+    row = db.remove_pending(gid, uid)
+    if row is None:
+        return await cb.message.edit_text(tr("CONFIRM_EXPIRED"))
+    await cb.message.edit_text(tr("CONFIRM_REMOVED", **when))
+    log.info("player %s removed from game %s: said they didn't play", uid, gid)
+    await notify_admin(bot, row, said_no=True)
+
+
+async def expire_confirmations(bot: Bot) -> int:
+    """Remove players who didn't confirm in time, tell them and the admin. Returns how many."""
+    n = 0
+    for row in db.expired_pending(now() - CONFIRM_WITHIN):
+        if db.remove_pending(row["game_id"], row["player_id"]) is None:
+            continue   # confirmed or removed meanwhile
+        n += 1
+        g = db.game(row["game_id"])
+        lang = lang_of(row["player_id"])
+        date, hm = fmt_local(g["start_at"])
+        with suppress(TelegramAPIError):
+            await bot.send_message(row["player_id"], T.t(lang, "CONFIRM_TIMED_OUT", date=date, time=hm))
+        log.info("player %s removed from game %s: no confirmation", row["player_id"], row["game_id"])
+        await notify_admin(bot, row, said_no=False)
+    return n
+
+
+async def expiry_loop(bot: Bot) -> None:
+    while True:
+        await asyncio.sleep(EXPIRY_CHECK_SECONDS)
+        try:
+            await expire_confirmations(bot)
+        except Exception:
+            log.exception("confirmation expiry failed")
 
 
 # --- choosing whom to rate (README §7) -------------------------------------------
@@ -843,6 +984,7 @@ async def main():
     dp.include_router(router)
     await set_commands(bot)
     asyncio.create_task(nightly.loop(bot, db, GROUP_ID))
+    asyncio.create_task(expiry_loop(bot))
     log.info("starting polling as @%s", (await bot.me()).username)
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 

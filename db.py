@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS game_players (
   game_id      INTEGER NOT NULL REFERENCES games(id),
   player_id    INTEGER NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
   joined_at    TEXT NOT NULL,
+  added_by     INTEGER,         -- who added this player (NULL: added themselves)
+  confirmed_at TEXT,            -- NULL: waiting for the player to confirm they played
   PRIMARY KEY (game_id, player_id)
 );
 CREATE TABLE IF NOT EXISTS ratings (
@@ -55,9 +57,14 @@ CREATE INDEX IF NOT EXISTS gp_player ON game_players(player_id);
 CREATE INDEX IF NOT EXISTS ratings_rater ON ratings(rater_id);
 """
 
+# Confirmed participation only: everything rating-related reads this, so pending players never count.
+VIEWS = """
+CREATE VIEW IF NOT EXISTS played AS SELECT * FROM game_players WHERE confirmed_at IS NOT NULL;
+"""
+
 # Games with enough players to count, reused by several queries.
 COUNTING = f"""counting AS (
-  SELECT game_id FROM game_players GROUP BY game_id HAVING COUNT(*) >= {MIN_COUNTING_PLAYERS}
+  SELECT game_id FROM played GROUP BY game_id HAVING COUNT(*) >= {MIN_COUNTING_PLAYERS}
 )"""
 
 TABLES = ("players", "games", "game_players", "ratings")
@@ -90,12 +97,19 @@ class DB:
             self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.executescript(SCHEMA)
         self._migrate()
+        self.conn.executescript(VIEWS)
 
     def _migrate(self) -> None:
         """Bring databases created by older versions up to the current schema."""
         cols = {r["name"] for r in self.q("PRAGMA table_info(players)")}
         if "lang" not in cols:
             self.conn.execute("ALTER TABLE players ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
+        cols = {r["name"] for r in self.q("PRAGMA table_info(game_players)")}
+        if "confirmed_at" not in cols:
+            # games submitted before confirmations existed count as confirmed
+            self.conn.execute("ALTER TABLE game_players ADD COLUMN added_by INTEGER")
+            self.conn.execute("ALTER TABLE game_players ADD COLUMN confirmed_at TEXT")
+            self.conn.execute("UPDATE game_players SET confirmed_at = joined_at")
 
     def q(self, sql: str, *args) -> list[sqlite3.Row]:
         return self.conn.execute(sql, args).fetchall()
@@ -137,16 +151,25 @@ class DB:
         with self.tx():
             self.conn.execute("DELETE FROM ratings WHERE player_id = ? OR rater_id = ?", (uid, uid))
             self.conn.execute("DELETE FROM game_players WHERE player_id = ?", (uid,))
+            self.conn.execute("UPDATE game_players SET added_by = NULL WHERE added_by = ?", (uid,))
             return self.conn.execute("DELETE FROM players WHERE telegram_id = ?", (uid,)).rowcount > 0
 
     # --- games ---------------------------------------------------------------
     def game(self, game_id: int) -> sqlite3.Row | None:
-        rows = self.q("""SELECT g.*, (SELECT COUNT(*) FROM game_players WHERE game_id = g.id) AS n
+        """The game with `n` = confirmed players and `pending` = players who haven't confirmed yet."""
+        rows = self.q("""SELECT g.*, (SELECT COUNT(*) FROM played WHERE game_id = g.id) AS n,
+                           (SELECT COUNT(*) FROM game_players WHERE game_id = g.id AND confirmed_at IS NULL)
+                             AS pending
                          FROM games g WHERE id = ?""", game_id)
         return rows[0] if rows else None
 
     def game_player_ids(self, game_id: int) -> list[int]:
+        """Everyone in the game, pending players included."""
         return [r[0] for r in self.q("SELECT player_id FROM game_players WHERE game_id = ?", game_id)]
+
+    def pending_ids(self, game_id: int) -> set[int]:
+        return {r[0] for r in self.q("SELECT player_id FROM game_players WHERE game_id = ? AND confirmed_at IS NULL",
+                                     game_id)}
 
     def matching_game(self, start: datetime, uids: list[int]) -> sqlite3.Row | None:
         """A game within ±1h of `start` sharing at least one of `uids` (the one sharing most)."""
@@ -159,19 +182,20 @@ class DB:
         return rows[0] if rows else None
 
     def create_game(self, start: datetime, creator: int, uids: list[int]) -> tuple[int, Added]:
-        """New game with the selected players (README §6)."""
+        """New game with the selected players (README §6). Everyone but the creator must confirm."""
         with self.tx():
             gid = self.conn.execute("INSERT INTO games (start_at, created_by, created_at) VALUES (?, ?, ?)",
                                     (iso(start), creator, iso(now()))).lastrowid
-            return gid, self._add(gid, start, uids)
+            return gid, self._add(gid, start, uids, creator)
 
-    def add_players(self, game_id: int, uids: list[int]) -> Added:
+    def add_players(self, game_id: int, uids: list[int], adder: int) -> Added:
         with self.tx():
-            return self._add(game_id, parse(self.game(game_id)["start_at"]), uids)
+            return self._add(game_id, parse(self.game(game_id)["start_at"]), uids, adder)
 
-    def _add(self, game_id: int, start: datetime, uids: list[int]) -> Added:
-        """Adds players who are not in it yet. Skips anyone in another game within ±1h, and stops at
-        MAX_PLAYERS. Call inside a transaction."""
+    def _add(self, game_id: int, start: datetime, uids: list[int], adder: int) -> Added:
+        """Adds players who are not in it yet. Skips anyone in another game within ±1h (pending ones too), and
+        stops at MAX_PLAYERS. The adder is confirmed at once; everyone else is pending. Call inside a
+        transaction."""
         res = Added([], [], [])
         n = self.one("SELECT COUNT(*) FROM game_players WHERE game_id = ?", game_id)
         t = iso(now())
@@ -185,24 +209,46 @@ class DB:
             elif n >= MAX_PLAYERS:
                 res.full.append(uid)
             else:
-                self.conn.execute("INSERT INTO game_players (game_id, player_id, joined_at) VALUES (?, ?, ?)",
-                                  (game_id, uid, t))
+                self.conn.execute("""INSERT INTO game_players (game_id, player_id, joined_at, added_by, confirmed_at)
+                                     VALUES (?, ?, ?, ?, ?)""",
+                                  (game_id, uid, t, None if uid == adder else adder, t if uid == adder else None))
                 res.added.append(uid)
                 n += 1
         return res
 
     def recent_games(self, uid: int, limit: int = 10) -> list[sqlite3.Row]:
         """The player's games, newest first, with player count `n`. limit=-1: all of them."""
-        return self.q("""SELECT g.id, g.start_at, (SELECT COUNT(*) FROM game_players WHERE game_id = g.id) AS n
+        return self.q("""SELECT g.id, g.start_at, (SELECT COUNT(*) FROM game_players WHERE game_id = g.id) AS n,
+                           gp.confirmed_at IS NULL AS mine_pending
                          FROM games g JOIN game_players gp ON gp.game_id = g.id
                          WHERE gp.player_id = ? ORDER BY g.start_at DESC LIMIT ?""", uid, limit)
+
+    # --- confirmations (README §6) ----------------------------------------------
+    def confirm(self, game_id: int, uid: int) -> bool:
+        """Mark a pending participation as confirmed. False if it isn't pending (any more)."""
+        return self.conn.execute("""UPDATE game_players SET confirmed_at = ?
+                                    WHERE game_id = ? AND player_id = ? AND confirmed_at IS NULL""",
+                                 (iso(now()), game_id, uid)).rowcount > 0
+
+    def remove_pending(self, game_id: int, uid: int) -> sqlite3.Row | None:
+        """Delete a pending participation and return it (with `added_by`); None if it wasn't pending."""
+        with self.tx():
+            rows = self.q("""SELECT * FROM game_players
+                             WHERE game_id = ? AND player_id = ? AND confirmed_at IS NULL""", game_id, uid)
+            if rows:
+                self.conn.execute("DELETE FROM game_players WHERE game_id = ? AND player_id = ?", (game_id, uid))
+            return rows[0] if rows else None
+
+    def expired_pending(self, before: datetime) -> list[sqlite3.Row]:
+        """Pending participations added before `before`."""
+        return self.q("SELECT * FROM game_players WHERE confirmed_at IS NULL AND joined_at < ?", iso(before))
 
     # --- games together --------------------------------------------------------
     def together(self, a: int, b: int) -> tuple[int, str | None]:
         """(counting games a and b played together, start_at of the last one)."""
         row = self.q(f"""WITH {COUNTING}
-            SELECT COUNT(*), MAX(g.start_at) FROM game_players x
-            JOIN game_players y ON y.game_id = x.game_id
+            SELECT COUNT(*), MAX(g.start_at) FROM played x
+            JOIN played y ON y.game_id = x.game_id
             JOIN counting c ON c.game_id = x.game_id
             JOIN games g ON g.id = x.game_id
             WHERE x.player_id = ? AND y.player_id = ?""", a, b)[0]
@@ -211,8 +257,8 @@ class DB:
     def together_matrix(self) -> dict[tuple[int, int], int]:
         """Counting games for every pair, keyed (smaller id, larger id)."""
         rows = self.q(f"""WITH {COUNTING}
-            SELECT x.player_id, y.player_id, COUNT(*) FROM game_players x
-            JOIN game_players y ON y.game_id = x.game_id AND y.player_id > x.player_id
+            SELECT x.player_id, y.player_id, COUNT(*) FROM played x
+            JOIN played y ON y.game_id = x.game_id AND y.player_id > x.player_id
             JOIN counting c ON c.game_id = x.game_id
             GROUP BY x.player_id, y.player_id""")
         return {(r[0], r[1]): r[2] for r in rows}
@@ -223,8 +269,8 @@ class DB:
         stale = iso(now() - rerate_after)
         return self.q(f"""WITH {COUNTING},
             mates AS (
-              SELECT y.player_id AS pid, COUNT(*) AS games FROM game_players x
-              JOIN game_players y ON y.game_id = x.game_id AND y.player_id != x.player_id
+              SELECT y.player_id AS pid, COUNT(*) AS games FROM played x
+              JOIN played y ON y.game_id = x.game_id AND y.player_id != x.player_id
               JOIN counting c ON c.game_id = x.game_id
               WHERE x.player_id = ? GROUP BY y.player_id),
             cands AS (

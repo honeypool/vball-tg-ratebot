@@ -1,4 +1,5 @@
 from datetime import timedelta
+import sqlite3
 
 import pytest
 
@@ -16,9 +17,12 @@ def db():
     return d
 
 
-def game_with(db, players, start):
+def game_with(db, players, start, confirm=True):
     gid, res = db.create_game(start, players[0], players)
     assert res.added == players
+    if confirm:
+        for p in players:
+            db.confirm(gid, p)
     return gid
 
 
@@ -49,7 +53,7 @@ def test_add_players_skips_existing_and_clashes(db):
     t = now() - timedelta(days=1)
     g1 = game_with(db, [1, 2, 3, 4], t)
     game_with(db, [5, 6], t + timedelta(minutes=45))                  # 19:00 vs 19:45
-    res = db.add_players(g1, [1, 5, 7])
+    res = db.add_players(g1, [1, 5, 7], 1)
     assert res.added == [7] and res.clash == [5] and res.full == []
     assert sorted(db.game_player_ids(g1)) == [1, 2, 3, 4, 7]
 
@@ -70,7 +74,8 @@ def test_three_player_game_does_not_count(db):
 
 def test_four_player_game_counts(db):
     gid = game_with(db, [1, 2, 3], now() - timedelta(days=2))
-    db.add_players(gid, [4])
+    db.add_players(gid, [4], 1)
+    db.confirm(gid, 4)
     assert {r["pid"] for r in db.rate_candidates(1, RERATE)} == {2, 3, 4}
     assert db.together(1, 2)[0] == 1
     assert db.together_matrix()[(1, 2)] == 1
@@ -150,3 +155,53 @@ def test_my_games_all_newest_first(db):
     rows = db.recent_games(1, limit=-1)
     assert [(r["id"], r["n"]) for r in rows] == [(new, 4), (old, 2)]
     assert db.rate_candidates(1, RERATE) and 2 not in {r["pid"] for r in db.rate_candidates(1, RERATE)}
+
+
+def test_added_players_pending_until_confirmed(db):
+    gid, res = db.create_game(now() - timedelta(days=1), 1, [1, 2, 3, 4])
+    assert db.pending_ids(gid) == {2, 3, 4}                            # the submitter is confirmed at once
+    assert db.game(gid)["n"] == 1 and db.game(gid)["pending"] == 3
+    assert db.together(1, 2)[0] == 0 and db.rate_candidates(1, RERATE) == [] and db.together_matrix() == {}
+    for p in (2, 3, 4):
+        assert db.confirm(gid, p)
+    assert not db.confirm(gid, 2)                                       # only once
+    assert db.together(1, 2)[0] == 1 and len(db.together_matrix()) == 6
+    assert db.recent_games(2, limit=-1)[0]["mine_pending"] == 0
+
+
+def test_remove_pending_and_expiry(db):
+    gid, _ = db.create_game(now() - timedelta(days=3), 1, [1, 2, 3])
+    db.add_players(gid, [4], 2)
+    row = db.remove_pending(gid, 2)
+    assert row["added_by"] == 1 and db.remove_pending(gid, 2) is None   # second click does nothing
+    assert db.remove_pending(gid, 1) is None                            # confirmed rows are never removed
+    db.conn.execute("UPDATE game_players SET joined_at = '2020-01-01T00:00:00Z' WHERE player_id = 3")
+    assert [r["player_id"] for r in db.expired_pending(now() - timedelta(hours=48))] == [3]
+    assert db.expired_pending(now() - timedelta(hours=48))[0]["added_by"] == 1
+    assert {r["player_id"]: r["added_by"] for r in db.q("SELECT * FROM game_players")}[4] == 2
+
+
+def test_delete_user_clears_added_by(db):
+    gid, _ = db.create_game(now() - H, 1, [1, 2])
+    db.delete_user(1)
+    assert db.q("SELECT player_id, added_by FROM game_players")[0][:] == (2, None)
+
+
+def test_migration_marks_old_participation_confirmed(tmp_path):
+    path = str(tmp_path / "old.sqlite")
+    c = sqlite3.connect(path)
+    c.executescript("""
+        CREATE TABLE players (telegram_id INTEGER PRIMARY KEY, consent_at TEXT NOT NULL, level REAL, tag_shown TEXT);
+        CREATE TABLE games (id INTEGER PRIMARY KEY, start_at TEXT NOT NULL, created_by INTEGER NOT NULL,
+                            created_at TEXT NOT NULL);
+        CREATE TABLE game_players (game_id INTEGER NOT NULL, player_id INTEGER NOT NULL, joined_at TEXT NOT NULL,
+                                   PRIMARY KEY (game_id, player_id));
+        INSERT INTO players VALUES (1, '2026-01-01T00:00:00Z', NULL, NULL), (2, '2026-01-01T00:00:00Z', NULL, NULL),
+                                   (3, '2026-01-01T00:00:00Z', NULL, NULL), (4, '2026-01-01T00:00:00Z', NULL, NULL);
+        INSERT INTO games VALUES (1, '2026-11-01T17:00:00Z', 1, '2026-11-01T20:00:00Z');
+        INSERT INTO game_players VALUES (1, 1, 'x'), (1, 2, 'x'), (1, 3, 'x'), (1, 4, 'x');
+    """)
+    c.commit()
+    c.close()
+    d = DB(path)
+    assert d.pending_ids(1) == set() and d.together(1, 2)[0] == 1
