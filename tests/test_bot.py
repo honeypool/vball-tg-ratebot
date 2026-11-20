@@ -105,7 +105,7 @@ def test_my_games_screen_lists_games_and_new_game_button():
     text, kb = bot.games_screen(games, 0, tr, "en")
     rows = game_buttons(kb)
     assert text.startswith("Your games (page 1/1)")
-    assert rows[0] == [("08.11 (Sun) 19:00 · 👤 2 · ⌀ 3.2", bot.MyGames(kind="open", value=7).pack())]
+    assert rows[0] == [("08.11 (Sun) 19:00 · 👤 2 · [3.2]", bot.MyGames(kind="open", value=7).pack())]
     assert rows[1][0][0] == "01.11 (Sun) 19:00 · 👤 5 ⏳"                 # no average without rated players                       # my participation not confirmed yet
     assert rows[2] == [("➕ Submit a new game", bot.Menu(action="submit").pack())]
     assert rows[3][0][0] == "« Menu"
@@ -139,7 +139,7 @@ def test_game_detail_weekday_average_and_tags():
               ("Carl", {"pending": 0, "tag": None}), ("Dan", {"pending": 1, "tag": "[~~2.0]"})]
     text = bot.game_detail_text(g, people, tr, "en")
     assert text.startswith("🏐 Game on <b>08.11 (Sun) at 19:00</b>\n"
-                           "Average level: <b>3.2</b> (2 of 3 players rated)\n\n")
+                           "Average level: <b>3.2</b>\n\n")
     assert "• Anna &lt;a&gt; [~3.5]\n• Bob [3.0]\n• Carl\n⏳ Dan [~~2.0]" in text
     ru = lambda k, **kw: T.t("ru", k, **kw)
     text = bot.game_detail_text({**g, "avg_level": None, "rated_n": 0}, people[2:3], ru, "ru")

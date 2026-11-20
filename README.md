@@ -115,9 +115,9 @@ Admin only: `/export`.
 
 ### My games (menu 1)
 
-A list of every game I played in, newest first, 10 per page. Each button shows the date with the weekday, time, number of players and the game's average level (`08.11 (Sun) 19:00 · 👤 6 · ⌀ 3.2`; no `⌀` while nobody in it has a level; ` ⏳` if my own participation isn't confirmed yet). Below the list: **[Submit a new game]** and **[Menu]**.
+A list of every game I played in, newest first, 10 per page. Each button shows the date with the weekday, time, number of players and the game's average level (`08.11 (Sun) 19:00 · 👤 6 · [3.2]`; no average while nobody in it has a level; ` ⏳` if my own participation isn't confirmed yet). Below the list: **[Submit a new game]** and **[Menu]**.
 
-Opening a game shows its date (with weekday) and time, below it the average level ("Average level: 3.2 (4 of 6 players rated)"), and all its players with their current tag, as in the group (`• Anna (@anna) [~3.5]`; names fetched live, tags from `players.tag`; ⏳ marks players who haven't confirmed yet), plus "This game will count for ratings once it has at least 4 players." if it has fewer. Buttons: **[Add players]** and **[« My games]**. **Add players** opens the same checkbox list as below, without the players already in the game; at least one must be ticked. The same rules apply (±1h clash, max 100). Only players of a game can open it.
+Opening a game shows its date (with weekday) and time, below it the average level ("Average level: 3.2"), and all its players with their current tag, as in the group (`• Anna (@anna) [~3.5]`; names fetched live, tags from `players.tag`; ⏳ marks players who haven't confirmed yet), plus "This game will count for ratings once it has at least 4 players." if it has fewer. Buttons: **[Add players]** and **[« My games]**. **Add players** opens the same checkbox list as below, without the players already in the game; at least one must be ticked. The same rules apply (±1h clash, max 100). Only players of a game can open it.
 
 ### Submit a new game (inside My games)
 

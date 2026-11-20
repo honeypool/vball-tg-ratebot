@@ -399,8 +399,6 @@ def game_detail_text(g, people: list, tr: Tr, lang: str) -> str:
         avg = tr("GAME_AVG_NONE")
     else:
         avg = tr("GAME_AVG", avg=f"{g['avg_level']:.1f}")
-        if g["rated_n"] < g["n"]:
-            avg += " " + tr("GAME_AVG_PARTIAL", rated=g["rated_n"], n=g["n"])
     lines = [f"{'⏳' if r['pending'] else '•'} {html.escape(name)}"
              + (f" {html.escape(r['tag'])}" if r["tag"] else "") for name, r in people]
     return tr("GAME_DETAIL", date=date, time=hm, avg=avg, n=len(people), names="\n".join(lines))
@@ -491,7 +489,7 @@ async def render_picker(message: Message, state: FSMContext, bot: Bot, me: int, 
         rows.append(nav)
     rows.append([(tr("BTN_DONE", n=len(selected)), GamePick(kind="done", value=0))])
     rows.append([(tr("BTN_CANCEL"), GamePick(kind="cancel", value=0))])
-    date, hm = fmt_local(data["start"])
+    date, hm = fmt_day(data["start"], lang)
     if data.get("game"):
         text = (tr("PICK_ADD", date=date, time=hm, page=page + 1, pages=pages) if people else
                 tr("NO_ONE_TO_ADD"))
@@ -633,7 +631,7 @@ async def ask_confirmations(bot: Bot, gid: int, adder: int, pids: list[int]) -> 
     for pid in pids:
         lang = lang_of(pid)
         tr = partial(T.t, lang)
-        date, hm = fmt_local(g["start_at"])
+        date, hm = fmt_day(g["start_at"], lang)
         try:
             await bot.send_message(pid, tr("CONFIRM_ASK", adder=html.escape(await name_of(bot, adder, lang)),
                                            date=date, time=hm, hours=hours),
