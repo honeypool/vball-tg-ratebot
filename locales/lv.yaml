@@ -43,7 +43,7 @@ SELF_RATE_INTRO: |-
   Abu dzimumu spēlētāji jāvērtē pēc spēlēm ar standarta vīriešu tīkla augstumu 2,43 m.
 SELF_RATE_DONE: "Paldies! Jūsu sākuma birka <b>{tag}</b> tagad redzama grupā."
 SELF_RATE_DONE_NO_TAG: "Paldies! Jūsu sākuma līmenis ir <b>{tag}</b>. Telegram neļauj piešķirt birkas grupas administratoriem un īpašniekam, tāpēc tā netiks rādīta blakus jūsu vārdam."
-SELF_RATE_REQUIRED: "Lūdzu, novērtējiet sevi vismaz vienā elementā. Mēģināsim vēlreiz."
+SELF_RATE_REQUIRED: "Vispirms novērtējiet sevi visās 6 disciplīnās."
 
 MENU: "Ko vēlaties darīt?"
 BTN_MY_GAMES: "🏐 Manas spēles"
@@ -124,7 +124,7 @@ RATE_INFO: "Kopīgas spēles: {games}, pēdējā: {ago}."
 RATE_FIRST: "Jūs vērtējat šo spēlētāju pirmo reizi."
 RATE_AGAIN: "Jūs jau novērtējāt šo spēlētāju {ago}."
 RATE_CHOOSE: "Izvēlieties disciplīnu, lai novērtētu vai pārvērtētu spēlētāju <b>{name}</b>:"
-RATE_CHOOSE_SELF: "Izvēlieties disciplīnu, lai novērtētu sevi. Novērtējiet vismaz vienu un nospiediet ✅ Gatavs:"
+RATE_CHOOSE_SELF: "Izvēlieties disciplīnu, lai novērtētu sevi. Novērtējiet visas 6 un nospiediet ✅ Gatavs:"
 BTN_BACK_TO_MENU: "« Atpakaļ uz izvēlni"
 BTN_SELF_DONE: "✅ Gatavs"
 RATE_SKILL: "Novērtējiet spēlētāja <b>{name}</b> prasmi:"

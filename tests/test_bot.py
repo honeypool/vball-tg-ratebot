@@ -59,13 +59,18 @@ def test_discipline_list_peer():
     assert buttons(kb)[6][0][1] == bot.Menu(action="home").pack()
 
 
-def test_discipline_list_self_needs_one_score_for_done():
+def test_discipline_list_self_needs_all_six_for_done():
     _, kb = bot.disciplines_screen(7, "INTRO", "", [None] * 6, True, EN, "en")
-    assert len(kb.inline_keyboard) == 6                                     # no Done, no menu
+    assert texts(kb)[6:] == [["🌐 Language"], ["🗑 Revoke consent and delete my data"]]   # no Done yet
+    assert buttons(kb)[6][0][1] == bot.Menu(action="language").pack()
+    assert buttons(kb)[7][0][1] == bot.Menu(action="revoke").pack()
     ru = lambda k, **kw: T.t("ru", k, **kw)
-    text, kb = bot.disciplines_screen(7, "INTRO", "", [None, 4, None, None, None, None], True, ru, "ru")
-    assert texts(kb)[:2] == [["❓Подача »"], ["✅Приём - 4"]] and texts(kb)[6] == ["✅ Готово"]
-    assert buttons(kb)[6][0][1] == bot.Menu(action="selfdone").pack()
+    _, kb = bot.disciplines_screen(7, "INTRO", "", [3, 4, 2, 5, 1, None], True, ru, "ru")
+    assert texts(kb)[:2] == [["✅Подача - 3"], ["✅Приём - 4"]] and texts(kb)[5] == ["❓Защита »"]
+    assert len(kb.inline_keyboard) == 8                                     # 5 of 6: still no Done
+    _, kb = bot.disciplines_screen(7, "INTRO", "", [3, 4, 2, 5, 1, 0], True, ru, "ru")
+    assert texts(kb)[6] == ["✅ Готово"] and buttons(kb)[6][0][1] == bot.Menu(action="selfdone").pack()
+    assert len(kb.inline_keyboard) == 9
 
 
 def test_level_screen_unrated():

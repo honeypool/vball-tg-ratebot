@@ -36,7 +36,7 @@ Run only one `bot.py` per token at a time. A second copy, on this PC or on the s
 
 1. Someone outside the group gets "This bot only works for members of the group".
 2. `/start` shows the language choice (English / Русский / Latviešu). After that, everything (consent text, menu, rating screen, criteria) is in the chosen language. **🌐 Language** in the menu changes it later.
-3. Consent, then self-rate: the discipline list shows `❓Serve »` everywhere and no **Done**. Rate one discipline → `✅Serve - 3` and **Done** appear. **Done** → the tag `[~~X.X]` appears in the group (not for the owner or admins).
+3. Consent, then self-rate: the discipline list shows `❓Serve »` everywhere and no **Done**. Rate one discipline → `✅Serve - 3`, still no **Done**. Rate all 6 → **Done** appears; nothing is saved before it. **Done** → the tag `[~~X.X]` appears in the group (not for the owner or admins).
 4. **My games** → **Submit a new game** with only yourself selected, or with 2 players but not yourself: **Done** refuses. With yourself and 1 more: the game is saved (it doesn't count for ratings until it has 4). Open it in **My games**, **Add players** to reach 4.
 4a. Each added player gets "Did you play?". **Yes** → they count. **No** → removed, and the admin gets a notice naming both players. Leave one unanswered (set `CONFIRM_WITHIN` to 2 minutes for the test) → removed and the admin is notified.
 4b. In the player list, send the contact of a consented player → they're ticked. Send the contact of someone who hasn't joined → the invite message. `/export` contains no phone numbers.
@@ -95,7 +95,7 @@ UI languages: **English, Russian, Latvian.** `en` is the reference: the other lo
 1. The user opens the bot in private chat. The bot checks the user is a member of `GROUP_ID`. If not, it replies "This bot only works for members of the group" and stops.
 2. **Language**: the bot asks "Choose language / Выберите язык / Izvēlieties valodu" with English / Русский / Latviešu buttons. Before consent the choice is kept only in memory. It is stored with the player on consent. Messages to unknown users (e.g. "only for members") use the Telegram app language.
 3. The bot shows the description and asks for consent: **[I agree] / [No thanks]**. Consent is recorded as `consent_at`.
-4. **Self-rating** (required before anything else): the same discipline list and level screens as rating someone else (§7), at least one discipline, then **Done**. It is saved as a rating where `rater = player`.
+4. **Self-rating** (required before anything else): the same discipline list and level screens as rating someone else (§7). **All 6 disciplines are required**; the scores are kept in the conversation state and saved together on **Done**. It is saved as a rating where `rater = player`.
 5. **On Done, set the tag** `[~~X.X]` (see §9).
 6. Show the main menu.
 
@@ -183,7 +183,12 @@ Everything happens in **one message** that is edited in place. Every tap saves a
    discipline and sets `updated_at = now` (this restarts the 90-day "needs my rating" clock and `w_age` for the
    whole rating). Erasing the last scored discipline deletes the rating.
 4. **Self-rating** uses the same two screens. The list starts with the self-rating intro, and instead of
-   "Back to menu" has **[✅ Done]** once at least one discipline is rated. Done sets the tag (§9) and shows the menu.
+   "Back to menu" has **[✅ Done]** once all 6 disciplines are rated. Unlike a peer rating, nothing is saved per
+   tap: Done saves all six at once, sets the tag (§9) and shows the menu. (If the bot restarts mid-way, the
+   self-rating starts over.)
+   The main menu is not available until Done, so the self-rating list also has **[🌐 Language]** and
+   **[🗑 Revoke consent and delete my data]**. Changing the language, cancelling the revoke question, or sending
+   /start returns to the self-rating with the scores collected so far.
 
 ## 8. Level calculation (`rating.py`)
 

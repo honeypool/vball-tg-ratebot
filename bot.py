@@ -264,12 +264,13 @@ def consent_kb(tr: Tr) -> InlineKeyboardMarkup:
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext, tr: Tr, lang: str):
     uid = message.from_user.id
-    await state.clear()
     if db.player(uid) is None:
+        await state.clear()
         await message.answer(T.CHOOSE_LANG, reply_markup=lang_kb())
     elif not db.is_self_rated(uid):
         await start_self_rating(message, state, uid, tr, lang)
     else:
+        await state.clear()
         await show_menu(message, uid, tr)
 
 
@@ -318,8 +319,8 @@ async def on_decline(cb: CallbackQuery, state: FSMContext, tr: Tr):
 
 
 async def start_self_rating(message: Message, state: FSMContext, uid: int, tr: Tr, lang: str):
-    await state.clear()
-    await show_disciplines(message, message.bot, uid, uid, tr, lang, new=True)
+    """The self-rating list. Scores collected so far (FSM state) are kept, e.g. after a language change."""
+    await show_disciplines(message, state, message.bot, uid, uid, tr, lang, new=True)
 
 
 # --- games (README §6) -----------------------------------------------------------
@@ -782,6 +783,13 @@ def scores_of(player: int, rater: int) -> list[int | None]:
     return [row[d] if row else None for d in DISCIPLINES]
 
 
+async def current_scores(state: FSMContext, uid: int, pid: int) -> list[int | None]:
+    """Peer rating: from the DB. Self-rating: kept in the FSM state until Done saves all six at once."""
+    if pid == uid:
+        return list((await state.get_data()).get("self_scores") or [None] * len(DISCIPLINES))
+    return scores_of(pid, uid)
+
+
 def disciplines_screen(pid: int, header: str, name: str, scores: list, is_self: bool, tr: Tr,
                        lang: str) -> tuple[str, InlineKeyboardMarkup]:
     """Header, "Choose the discipline…", then one button per discipline with its current score."""
@@ -791,8 +799,12 @@ def disciplines_screen(pid: int, header: str, name: str, scores: list, is_self: 
             for i, (d, v) in enumerate(zip(DISCIPLINES, scores))]
     if not is_self:
         rows.append([(tr("BTN_BACK_TO_MENU"), Menu(action="home"))])
-    elif any(v is not None for v in scores):
-        rows.append([(tr("BTN_SELF_DONE"), Menu(action="selfdone"))])
+    else:
+        if all(v is not None for v in scores):    # self-rating needs all six (README §5)
+            rows.append([(tr("BTN_SELF_DONE"), Menu(action="selfdone"))])
+        # the main menu needs a finished self-rating; these two must work before that (README §5)
+        rows.append([(tr("BTN_LANGUAGE"), Menu(action="language"))])
+        rows.append([(tr("BTN_REVOKE"), Menu(action="revoke"))])
     return f"{header}\n\n{choose}", keyboard(rows)
 
 
@@ -822,7 +834,7 @@ async def edit(message: Message, text: str, markup: InlineKeyboardMarkup) -> Non
             raise
 
 
-async def show_disciplines(message: Message, bot: Bot, uid: int, pid: int, tr: Tr, lang: str,
+async def show_disciplines(message: Message, state: FSMContext, bot: Bot, uid: int, pid: int, tr: Tr, lang: str,
                            new: bool = False) -> bool:
     """The discipline list for rating pid (pid == uid: self-rating). False if uid may not rate pid."""
     if pid == uid:
@@ -835,7 +847,8 @@ async def show_disciplines(message: Message, bot: Bot, uid: int, pid: int, tr: T
             return False
         name = with_handle(await name_of(bot, pid, lang))
         header = rating_header(name, *ok, db.rated_at(pid, uid), tr, lang)
-    text, markup = disciplines_screen(pid, header, name, scores_of(pid, uid), pid == uid, tr, lang)
+    text, markup = disciplines_screen(pid, header, name, await current_scores(state, uid, pid), pid == uid,
+                                      tr, lang)
     if new:
         await message.answer(text, reply_markup=markup)
     else:
@@ -848,48 +861,59 @@ def may_rate(uid: int, pid: int) -> bool:
 
 
 @router.callback_query(Pick.filter())
-async def on_pick(cb: CallbackQuery, callback_data: Pick, bot: Bot, tr: Tr, lang: str):
+async def on_pick(cb: CallbackQuery, callback_data: Pick, state: FSMContext, bot: Bot, tr: Tr, lang: str):
     await cb.answer()
-    if not await show_disciplines(cb.message, bot, cb.from_user.id, callback_data.pid, tr, lang):
+    if not await show_disciplines(cb.message, state, bot, cb.from_user.id, callback_data.pid, tr, lang):
         await cb.message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
 
 
 @router.callback_query(RateOpen.filter())
-async def on_rate_open(cb: CallbackQuery, callback_data: RateOpen, bot: Bot, tr: Tr, lang: str):
+async def on_rate_open(cb: CallbackQuery, callback_data: RateOpen, state: FSMContext, bot: Bot, tr: Tr,
+                       lang: str):
     uid, pid, d = cb.from_user.id, callback_data.pid, callback_data.d
     if not may_rate(uid, pid) or not 0 <= d < len(DISCIPLINES):
         return await cb.answer(tr("NOT_RATEABLE"), show_alert=True)
     await cb.answer()
     name = "" if pid == uid else with_handle(await name_of(bot, pid, lang))
-    await edit(cb.message, *level_screen(pid, d, name, scores_of(pid, uid)[d], pid == uid, tr, lang))
+    current = (await current_scores(state, uid, pid))[d]
+    await edit(cb.message, *level_screen(pid, d, name, current, pid == uid, tr, lang))
 
 
 @router.callback_query(RateSet.filter())
-async def on_rate_set(cb: CallbackQuery, callback_data: RateSet, bot: Bot, tr: Tr, lang: str):
-    """A level (save it), Erase (NULL) or Keep unrated; then back to the discipline list."""
+async def on_rate_set(cb: CallbackQuery, callback_data: RateSet, state: FSMContext, bot: Bot, tr: Tr,
+                      lang: str):
+    """A level, Erase (NULL) or Keep unrated; then back to the discipline list. A peer rating is saved at once;
+    a self-rating is only collected here and saved by Done."""
     uid, pid, d, v = cb.from_user.id, callback_data.pid, callback_data.d, callback_data.v
     if not may_rate(uid, pid) or not 0 <= d < len(DISCIPLINES):
         return await cb.answer(tr("NOT_RATEABLE"), show_alert=True)
     key = DISCIPLINES[d]
-    current = scores_of(pid, uid)[d]
-    if MIN_LEVEL <= v <= MAX_LEVEL and v != current:
-        db.set_score(pid, uid, key, v)
-        await cb.answer(tr("SCORE_SAVED", discipline=T.discipline(lang, key), n=v))
-    elif v == ERASE and current is not None:
-        db.set_score(pid, uid, key, None)
-        await cb.answer(tr("SCORE_ERASED", discipline=T.discipline(lang, key)))
-    else:
+    scores = await current_scores(state, uid, pid)
+    current = scores[d]
+    new = v if MIN_LEVEL <= v <= MAX_LEVEL else None if v == ERASE else current
+    if new == current:
         await cb.answer()
-    await show_disciplines(cb.message, bot, uid, pid, tr, lang)
+    elif pid == uid:
+        scores[d] = new
+        await state.update_data(self_scores=scores)
+        await cb.answer()
+    else:
+        db.set_score(pid, uid, key, new)
+        await cb.answer(tr("SCORE_SAVED", discipline=T.discipline(lang, key), n=new) if new is not None
+                        else tr("SCORE_ERASED", discipline=T.discipline(lang, key)))
+    await show_disciplines(cb.message, state, bot, uid, pid, tr, lang)
 
 
 @router.callback_query(Menu.filter(F.action == "selfdone"))
-async def on_self_done(cb: CallbackQuery, bot: Bot, tr: Tr, lang: str):
+async def on_self_done(cb: CallbackQuery, state: FSMContext, bot: Bot, tr: Tr, lang: str):
     uid = cb.from_user.id
     if db.player(uid) is None:
         return await cb.answer(tr("EXPIRED"), show_alert=True)
-    if not db.is_self_rated(uid):
+    scores = await current_scores(state, uid, uid)
+    if any(v is None for v in scores):
         return await cb.answer(tr("SELF_RATE_REQUIRED"), show_alert=True)
+    db.save_rating(uid, uid, scores)
+    await state.clear()
     await cb.answer()
     with suppress(TelegramBadRequest):
         await cb.message.edit_reply_markup(reply_markup=None)
@@ -955,12 +979,16 @@ async def cmd_export(message: Message):
 
 # --- fallbacks -------------------------------------------------------------------
 @router.callback_query(Menu.filter(F.action == "home"))
-async def on_home(cb: CallbackQuery, state: FSMContext, tr: Tr):
+async def on_home(cb: CallbackQuery, state: FSMContext, tr: Tr, lang: str):
     await cb.answer()
-    await state.clear()
-    if ready(cb.from_user.id):
-        await show_menu(cb.message, cb.from_user.id, tr)
+    uid = cb.from_user.id
+    if ready(uid):
+        await state.clear()
+        await show_menu(cb.message, uid, tr)
+    elif db.player(uid):     # e.g. "Cancel" on revoke during the self-rating: back to it, scores kept
+        await start_self_rating(cb.message, state, uid, tr, lang)
     else:
+        await state.clear()
         await cb.message.answer(tr("EXPIRED"))
 
 

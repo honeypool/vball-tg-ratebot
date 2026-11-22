@@ -43,7 +43,7 @@ SELF_RATE_INTRO: |-
   Players of both genders should be rated on games with standard male net height of 2.43m.
 SELF_RATE_DONE: "Thanks! Your starting tag <b>{tag}</b> is now shown in the group."
 SELF_RATE_DONE_NO_TAG: "Thanks! Your starting level is <b>{tag}</b>. Telegram doesn't allow tags for group admins and the owner, so it can't be shown next to your name."
-SELF_RATE_REQUIRED: "Please rate at least one discipline about yourself. Let's try again."
+SELF_RATE_REQUIRED: "Please rate yourself in all 6 disciplines first."
 
 MENU: "What would you like to do?"
 BTN_MY_GAMES: "🏐 My games"
@@ -124,7 +124,7 @@ RATE_INFO: "Games together: {games}, last: {ago}."
 RATE_FIRST: "You rate this player for the first time."
 RATE_AGAIN: "You have already rated this player {ago}."
 RATE_CHOOSE: "Choose the discipline to rate/rerate for <b>{name}</b>:"
-RATE_CHOOSE_SELF: "Choose the discipline to rate yourself. Rate at least one, then press ✅ Done:"
+RATE_CHOOSE_SELF: "Choose the discipline to rate yourself. Rate all 6, then press ✅ Done:"
 BTN_BACK_TO_MENU: "« Back to menu"
 BTN_SELF_DONE: "✅ Done"
 RATE_SKILL: "Rate <b>{name}</b> skill:"
