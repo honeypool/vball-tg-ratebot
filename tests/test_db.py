@@ -226,3 +226,33 @@ def test_game_average_level_follows_levels_and_roster(db):
     assert db.game(gid)["avg_level"] == 4.0 and db.game(gid)["rated_n"] == 3
     db.delete_user(2)
     assert db.game(gid)["avg_level"] == 4.0 and db.game(gid)["rated_n"] == 2      # (2 + 6) / 2
+
+
+def test_set_score_one_discipline_at_a_time(db):
+    db.set_score(2, 1, "defense", 3)
+    r = db.rating(2, 1)
+    assert r["defense"] == 3 and r["serving"] is None and r["created_at"] == r["updated_at"]
+    db.set_score(2, 1, "serving", 5)
+    db.set_score(2, 1, "defense", 4)
+    r = db.rating(2, 1)
+    assert (r["serving"], r["defense"]) == (5, 4)
+    db.set_score(2, 1, "serving", None)                 # erase one
+    assert db.rating(2, 1)["serving"] is None and db.rating(2, 1)["defense"] == 4
+    db.set_score(2, 1, "defense", None)                 # erasing the last one deletes the rating
+    assert db.rating(2, 1) is None
+    db.set_score(2, 1, "blocking", None)                # nothing to erase: no-op
+    assert db.rating(2, 1) is None
+    with pytest.raises(ValueError):
+        db.set_score(2, 1, "serving; DROP TABLE ratings", 1)
+
+
+def test_partly_rated_player_still_needs_my_rating(db):
+    game_with(db, [1, 2, 3, 4], now() - H)
+    db.set_score(2, 1, "serving", 3)                    # only 1 of 6 disciplines
+    needs = lambda: {r["pid"]: r["needs"] for r in db.rate_candidates(1, RERATE)}[2]
+    assert needs() == 1
+    for d in ("serve_receive", "setting", "attacking", "blocking"):
+        db.set_score(2, 1, d, 3)
+    assert needs() == 1                                 # 5 of 6
+    db.set_score(2, 1, "defense", 2)
+    assert needs() == 0                                 # all rated

@@ -9,6 +9,13 @@ DISCIPLINES:
   attacking: Uzbrukums
   blocking: Bloķēšana
   defense: Aizsardzība
+DISCIPLINES_SHORT:
+  serving: Serve
+  serve_receive: Pieņemšana
+  setting: Piespēle
+  attacking: Uzbrukums
+  blocking: Bloks
+  defense: Aizsardzība
 
 NET_NOTE: "Abu dzimumu spēlētāji jāvērtē pēc spēlēm ar standarta vīriešu tīkla augstumu 2,43 m."
 NOT_MEMBER: "Šis bots darbojas tikai grupas dalībniekiem."
@@ -114,19 +121,19 @@ NOT_RATEABLE: "Novērtēt var tikai spēlētājus, ar kuriem esat spēlējis ies
 
 RATE_SELECTED: "Jūs izvēlējāties novērtēt spēlētāju <b>{name}</b>."
 RATE_INFO: "Kopīgas spēles: {games}, pēdējā: {ago}."
-RATE_AGAIN: "Jūs jau novērtējāt šo spēlētāju {date}. Jaunais vērtējums aizstās iepriekšējo."
-SKIP_HINT: "Ja neesat pārliecināts par kādu prasmi, droši pārejiet pie nākamās disciplīnas."
-BTN_BACK: "ATPAKAĻ"
-BTN_OK: "OK"
-RATE_PROMPT: "Lūdzu, novērtējiet spēlētāju {name} disciplīnā:"
-RATE_PROMPT_SELF: "Lūdzu, novērtējiet sevi disciplīnā:"
-DISCIPLINE_STEP: "{discipline} ({step}/6)"
-LEVEL: "{n}. līmenis:"
-BTN_CHOOSE: "Izvēlēties {n}"
-BTN_CANT_JUDGE: "Nevaru novērtēt (izlaist)"
+RATE_FIRST: "Jūs vērtējat šo spēlētāju pirmo reizi."
+RATE_AGAIN: "Jūs jau novērtējāt šo spēlētāju {ago}."
+RATE_CHOOSE: "Izvēlieties disciplīnu, lai novērtētu vai pārvērtētu spēlētāju <b>{name}</b>:"
+RATE_CHOOSE_SELF: "Izvēlieties disciplīnu, lai novērtētu sevi. Novērtējiet vismaz vienu un nospiediet ✅ Gatavs:"
+BTN_BACK_TO_MENU: "« Atpakaļ uz izvēlni"
+BTN_SELF_DONE: "✅ Gatavs"
+RATE_SKILL: "Novērtējiet spēlētāja <b>{name}</b> prasmi:"
+RATE_SKILL_SELF: "Novērtējiet savu prasmi:"
+BTN_ERASE: "Dzēst vērtējumu •{n}• disciplīnā {discipline}"
+BTN_KEEP_UNRATED: "Atstāt bez vērtējuma, atpakaļ uz sarakstu"
+SCORE_SAVED: "Saglabāts: {discipline} {n}. Līmeņi tiek pārrēķināti katru nakti."
+SCORE_ERASED: "Vērtējums disciplīnā {discipline} dzēsts."
 
-NOTHING_SAVED: "Nekas netika saglabāts."
-RATING_SAVED: "Paldies par spēlētāja {name} novērtējumu. Vērtējums ir saglabāts un drīz tiks ņemts vērā. Līmeņi tiek pārrēķināti katru nakti."
 EXPIRED: "Šis ekrāns vairs nav aktuāls. Lūdzu, sāciet no jauna izvēlnē."
 
 STATS: |-

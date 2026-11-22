@@ -303,9 +303,10 @@ class DB:
         return {(r[0], r[1]): r[2] for r in rows}
 
     def rate_candidates(self, rater: int, rerate_after: timedelta) -> list[sqlite3.Row]:
-        """Players the rater may rate, sorted per README §7. `needs` = not rated by me, or my rating is stale;
-        `mine` = when I last rated them (None if never)."""
+        """Players the rater may rate, sorted per README §7. `needs` = not rated by me, my rating is stale, or
+        it doesn't cover all disciplines yet; `mine` = when I last rated them (None if never)."""
         stale = iso(now() - rerate_after)
+        complete = " AND ".join(f"r.{d} IS NOT NULL" for d in DISCIPLINES)
         return self.q(f"""WITH {COUNTING},
             mates AS (
               SELECT y.player_id AS pid, COUNT(*) AS games FROM played x
@@ -315,11 +316,12 @@ class DB:
             cands AS (
               SELECT m.pid, m.games,
                 (SELECT COUNT(*) FROM ratings r WHERE r.player_id = m.pid AND r.rater_id != m.pid) AS peer_count,
-                (SELECT updated_at FROM ratings r WHERE r.player_id = m.pid AND r.rater_id = ?) AS mine
+                (SELECT updated_at FROM ratings r WHERE r.player_id = m.pid AND r.rater_id = ?) AS mine,
+                (SELECT {complete} FROM ratings r WHERE r.player_id = m.pid AND r.rater_id = ?) AS complete
               FROM mates m JOIN players p ON p.telegram_id = m.pid)
-            SELECT *, (mine IS NULL OR mine < ?) AS needs FROM cands
+            SELECT *, (mine IS NULL OR mine < ? OR NOT complete) AS needs FROM cands
             ORDER BY needs DESC, peer_count ASC, games DESC, pid""",
-                      rater, rater, stale)
+                      rater, rater, rater, stale)
 
     def rated_at(self, player: int, rater: int) -> str | None:
         """When `rater` last rated `player` (None if never)."""
@@ -340,6 +342,34 @@ class DB:
                 ON CONFLICT (player_id, rater_id) DO UPDATE SET {updates}, updated_at = excluded.updated_at""",
             (player, rater, *scores, t, t))
         return True
+
+    def rating(self, player: int, rater: int) -> sqlite3.Row | None:
+        rows = self.q("SELECT * FROM ratings WHERE player_id = ? AND rater_id = ?", player, rater)
+        return rows[0] if rows else None
+
+    def set_score(self, player: int, rater: int, discipline: str, value: int | None) -> None:
+        """Set one discipline of the (player, rater) rating and its updated_at (README §7). None erases it;
+        erasing the last scored discipline deletes the rating."""
+        if discipline not in DISCIPLINES:
+            raise ValueError(discipline)
+        t = iso(now())
+        with self.tx():
+            if value is not None:
+                self.conn.execute(
+                    f"""INSERT INTO ratings (player_id, rater_id, {discipline}, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT (player_id, rater_id)
+                        DO UPDATE SET {discipline} = excluded.{discipline}, updated_at = excluded.updated_at""",
+                    (player, rater, value, t, t))
+                return
+            row = self.rating(player, rater)
+            if row is None:
+                return
+            if all(row[d] is None for d in DISCIPLINES if d != discipline):
+                self.conn.execute("DELETE FROM ratings WHERE player_id = ? AND rater_id = ?", (player, rater))
+            else:
+                self.conn.execute(f"""UPDATE ratings SET {discipline} = NULL, updated_at = ?
+                                      WHERE player_id = ? AND rater_id = ?""", (t, player, rater))
 
     def ratings(self) -> list[Rating]:
         return [Rating(r["player_id"], r["rater_id"], tuple(r[d] for d in DISCIPLINES), parse(r["updated_at"]))

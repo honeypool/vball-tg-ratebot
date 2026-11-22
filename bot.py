@@ -23,8 +23,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (BotCommand, BufferedInputFile, CallbackQuery, ChatMemberUpdated, InlineKeyboardButton,
-                           InlineKeyboardMarkup, InputRichBlockBlockQuotation, InputRichBlockParagraph,
-                           InputRichMessage, Message, RichTextBold)
+                           InlineKeyboardMarkup, Message)
 
 import nightly
 import texts as T
@@ -57,7 +56,7 @@ STATS_MIN_PEERS = 3                # peer ratings needed to see "My stats"
 CONFIRM_WITHIN = timedelta(hours=48)  # an added player must confirm within this, or is removed
 EXPIRY_CHECK_SECONDS = 600
 MEMBER_CACHE_SECONDS = 300
-FIRST_LEVEL = 0                    # level shown first on the rating screen
+ERASE, KEEP = -1, -2               # RateSet values besides 0..6: "Erase rating", "Keep unrated"
 
 log = logging.getLogger("bot")
 db: DB  # set in main()
@@ -97,20 +96,20 @@ class Pick(CallbackData, prefix="r"):
     pid: int
 
 
-class RateGo(CallbackData, prefix="rg"):
-    pid: int           # "OK" on the confirmation screen: start rating this player
+class RateOpen(CallbackData, prefix="ro"):
+    pid: int           # player being rated (= me: self-rating)
+    d: int             # discipline index
 
 
-class Score(CallbackData, prefix="s"):
-    step: int          # discipline index the button belongs to (stale presses are ignored)
-    kind: str          # show (browse to level), choose, skip
-    value: int
+class RateSet(CallbackData, prefix="rs"):
+    pid: int
+    d: int
+    v: int             # 0..6 = level, ERASE, KEEP
 
 
 class Flow(StatesGroup):
     game_time = State()
     game_players = State()
-    rating = State()
 
 
 # --- helpers ---------------------------------------------------------------------
@@ -319,8 +318,8 @@ async def on_decline(cb: CallbackQuery, state: FSMContext, tr: Tr):
 
 
 async def start_self_rating(message: Message, state: FSMContext, uid: int, tr: Tr, lang: str):
-    await message.answer(tr("SELF_RATE_INTRO"))
-    await begin_rating(message, state, lang, target=uid, is_self=True, name="")
+    await state.clear()
+    await show_disciplines(message, message.bot, uid, uid, tr, lang, new=True)
 
 
 # --- games (README §6) -----------------------------------------------------------
@@ -769,121 +768,131 @@ def rateable(uid: int, pid: int) -> tuple[int, str | None] | None:
     return games, last
 
 
-def confirm_text(name: str, games: int, last: str, rated_at: str | None, tr: Tr, lang: str) -> str:
+def rating_header(name: str, games: int, last: str, rated_at: str | None, tr: Tr, lang: str) -> str:
+    """Top of the discipline list for a peer rating (README §7)."""
     lines = [tr("RATE_SELECTED", name=html.escape(name)),
              tr("RATE_INFO", games=games, ago=T.ago(lang, (now() - parse(last)).days))]
-    if rated_at:
-        lines.append(tr("RATE_AGAIN", date=parse(rated_at).astimezone(TZ).strftime("%d.%m.%Y")))
-    return "\n".join(lines + [tr("NET_NOTE"), tr("SKIP_HINT")])
+    lines.append(tr("RATE_AGAIN", ago=T.ago(lang, (now() - parse(rated_at)).days)) if rated_at
+                 else tr("RATE_FIRST"))
+    return "\n".join(lines + ["*" + tr("NET_NOTE")])
+
+
+def scores_of(player: int, rater: int) -> list[int | None]:
+    row = db.rating(player, rater)
+    return [row[d] if row else None for d in DISCIPLINES]
+
+
+def disciplines_screen(pid: int, header: str, name: str, scores: list, is_self: bool, tr: Tr,
+                       lang: str) -> tuple[str, InlineKeyboardMarkup]:
+    """Header, "Choose the discipline…", then one button per discipline with its current score."""
+    choose = tr("RATE_CHOOSE_SELF") if is_self else tr("RATE_CHOOSE", name=html.escape(name))
+    rows = [[((f"✅{T.discipline_short(lang, d)} - {v}" if v is not None
+               else f"❓{T.discipline_short(lang, d)} »"), RateOpen(pid=pid, d=i))]
+            for i, (d, v) in enumerate(zip(DISCIPLINES, scores))]
+    if not is_self:
+        rows.append([(tr("BTN_BACK_TO_MENU"), Menu(action="home"))])
+    elif any(v is not None for v in scores):
+        rows.append([(tr("BTN_SELF_DONE"), Menu(action="selfdone"))])
+    return f"{header}\n\n{choose}", keyboard(rows)
+
+
+def level_screen(pid: int, d: int, name: str, current: int | None, is_self: bool, tr: Tr,
+                 lang: str) -> tuple[str, InlineKeyboardMarkup]:
+    """All 7 levels of one discipline in one text block; [0]..[6] save a level (✓ = current one)."""
+    key = DISCIPLINES[d]
+    title = tr("RATE_SKILL_SELF") if is_self else tr("RATE_SKILL", name=html.escape(name))
+    levels = "\n".join(f"<b>•{n}•</b> {html.escape(T.criteria(lang, n, key), quote=False)}"
+                       for n in range(MIN_LEVEL, MAX_LEVEL + 1))
+    text = f"{title}\n<b>{html.escape(T.discipline(lang, key))}:</b>\n{levels}"
+    rows = [[(f"{n}✓" if n == current else str(n), RateSet(pid=pid, d=d, v=n))
+             for n in range(MIN_LEVEL, MAX_LEVEL + 1)]]
+    if current is None:
+        rows.append([(tr("BTN_KEEP_UNRATED"), RateSet(pid=pid, d=d, v=KEEP))])
+    else:
+        rows.append([(tr("BTN_ERASE", n=current, discipline=T.discipline(lang, key)),
+                      RateSet(pid=pid, d=d, v=ERASE))])
+    return text, keyboard(rows)
+
+
+async def edit(message: Message, text: str, markup: InlineKeyboardMarkup) -> None:
+    try:
+        await message.edit_text(text, reply_markup=markup)
+    except TelegramBadRequest as e:
+        if "not modified" not in str(e):
+            raise
+
+
+async def show_disciplines(message: Message, bot: Bot, uid: int, pid: int, tr: Tr, lang: str,
+                           new: bool = False) -> bool:
+    """The discipline list for rating pid (pid == uid: self-rating). False if uid may not rate pid."""
+    if pid == uid:
+        if db.player(uid) is None:
+            return False
+        header, name = tr("SELF_RATE_INTRO"), ""
+    else:
+        ok = rateable(uid, pid)
+        if ok is None:
+            return False
+        name = with_handle(await name_of(bot, pid, lang))
+        header = rating_header(name, *ok, db.rated_at(pid, uid), tr, lang)
+    text, markup = disciplines_screen(pid, header, name, scores_of(pid, uid), pid == uid, tr, lang)
+    if new:
+        await message.answer(text, reply_markup=markup)
+    else:
+        await edit(message, text, markup)
+    return True
+
+
+def may_rate(uid: int, pid: int) -> bool:
+    return db.player(uid) is not None if pid == uid else rateable(uid, pid) is not None
 
 
 @router.callback_query(Pick.filter())
 async def on_pick(cb: CallbackQuery, callback_data: Pick, bot: Bot, tr: Tr, lang: str):
-    """Confirmation screen before the 6 disciplines: [BACK] to the list, [OK] to start."""
     await cb.answer()
-    uid, pid = cb.from_user.id, callback_data.pid
-    ok = rateable(uid, pid)
-    if ok is None:
-        return await cb.message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
-    name = await name_of(bot, pid, lang)
-    await cb.message.edit_text(confirm_text(name, *ok, db.rated_at(pid, uid), tr, lang), reply_markup=keyboard(
-        [[(tr("BTN_BACK"), Page(page=-1)), (tr("BTN_OK"), RateGo(pid=pid))]]))
+    if not await show_disciplines(cb.message, bot, cb.from_user.id, callback_data.pid, tr, lang):
+        await cb.message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
 
 
-@router.callback_query(RateGo.filter())
-async def on_rate_go(cb: CallbackQuery, callback_data: RateGo, state: FSMContext, bot: Bot, tr: Tr, lang: str):
+@router.callback_query(RateOpen.filter())
+async def on_rate_open(cb: CallbackQuery, callback_data: RateOpen, bot: Bot, tr: Tr, lang: str):
+    uid, pid, d = cb.from_user.id, callback_data.pid, callback_data.d
+    if not may_rate(uid, pid) or not 0 <= d < len(DISCIPLINES):
+        return await cb.answer(tr("NOT_RATEABLE"), show_alert=True)
     await cb.answer()
-    uid, pid = cb.from_user.id, callback_data.pid
-    try:
-        await cb.message.delete()   # the confirmation text would only distract from the rating screen
-    except TelegramBadRequest:      # too old (>48h) or already gone: at least drop the buttons
-        with suppress(TelegramBadRequest):
-            await cb.message.edit_reply_markup(reply_markup=None)
-    if rateable(uid, pid) is None:
-        return await cb.message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
-    name = await name_of(bot, pid, lang)
-    await begin_rating(cb.message, state, lang, target=pid, is_self=False, name=name)
+    name = "" if pid == uid else with_handle(await name_of(bot, pid, lang))
+    await edit(cb.message, *level_screen(pid, d, name, scores_of(pid, uid)[d], pid == uid, tr, lang))
 
 
-# --- the rating screen (README §7) -----------------------------------------------
-async def begin_rating(message: Message, state: FSMContext, lang: str, target: int, is_self: bool, name: str):
-    await state.set_state(Flow.rating)
-    await state.set_data({"target": target, "self": is_self, "name": name,
-                          "scores": [], "level": FIRST_LEVEL, "msg": None})
-    await render_discipline(message, state, lang)
-
-
-def discipline_screen(data: dict, lang: str) -> tuple[InputRichMessage, InlineKeyboardMarkup]:
-    """One discipline, one level's criteria (quoted). ◀N / N▶ browse levels, Choose N saves the shown one."""
-    tr = partial(T.t, lang)
-    step = len(data["scores"])
-    key = DISCIPLINES[step]
-    level = data["level"]
-    prompt = tr("RATE_PROMPT_SELF") if data["self"] else tr("RATE_PROMPT", name=with_handle(data["name"]))
-    blocks = [
-        InputRichBlockParagraph(text=prompt),
-        InputRichBlockParagraph(text=RichTextBold(
-            text=tr("DISCIPLINE_STEP", discipline=T.discipline(lang, key), step=step + 1))),
-        InputRichBlockBlockQuotation(blocks=[InputRichBlockParagraph(text=tr("LEVEL", n=level)),
-                                             InputRichBlockParagraph(text=T.criteria(lang, level, key))]),
-    ]
-    row = []
-    if level > MIN_LEVEL:
-        row.append((f"◀{level - 1}", Score(step=step, kind="show", value=level - 1)))
-    row.append((tr("BTN_CHOOSE", n=level), Score(step=step, kind="choose", value=level)))
-    if level < MAX_LEVEL:
-        row.append((f"{level + 1}▶", Score(step=step, kind="show", value=level + 1)))
-    rows = [row, [(tr("BTN_CANT_JUDGE"), Score(step=step, kind="skip", value=level))]]
-    return InputRichMessage(blocks=blocks), keyboard(rows)
-
-
-async def render_discipline(message: Message, state: FSMContext, lang: str):
-    data = await state.get_data()
-    rich, markup = discipline_screen(data, lang)
-    bot = message.bot
-    if data.get("msg"):
-        try:
-            await bot.edit_message_text(chat_id=message.chat.id, message_id=data["msg"],
-                                        rich_message=rich, reply_markup=markup)
-            return
-        except TelegramBadRequest as e:
-            if "not modified" in str(e):
-                return
-            log.warning("editing rich message failed, sending a new one: %s", e)
-    sent = await bot.send_rich_message(chat_id=message.chat.id, rich_message=rich, reply_markup=markup)
-    await state.update_data(msg=sent.message_id)
-
-
-@router.callback_query(Flow.rating, Score.filter())
-async def on_score(cb: CallbackQuery, callback_data: Score, state: FSMContext, bot: Bot, tr: Tr, lang: str):
-    await cb.answer()
-    data = await state.get_data()
-    if callback_data.step != len(data["scores"]) or data.get("msg") != cb.message.message_id:
-        return  # stale button
-    level = max(MIN_LEVEL, min(MAX_LEVEL, callback_data.value))
-    if callback_data.kind == "show":
-        await state.update_data(level=level)
-        return await render_discipline(cb.message, state, lang)
-
-    # choose: save the level and open the next discipline at it; skip: keep the shown level
-    scores = data["scores"] + [level if callback_data.kind == "choose" else None]
-    if len(scores) < len(DISCIPLINES):
-        await state.update_data(scores=scores, level=level)
-        return await render_discipline(cb.message, state, lang)
-
-    await bot.edit_message_reply_markup(chat_id=cb.message.chat.id, message_id=data["msg"], reply_markup=None)
-    uid = cb.from_user.id
-    if data["self"]:
-        await finish_self_rating(cb.message, state, uid, scores, bot, tr, lang)
+@router.callback_query(RateSet.filter())
+async def on_rate_set(cb: CallbackQuery, callback_data: RateSet, bot: Bot, tr: Tr, lang: str):
+    """A level (save it), Erase (NULL) or Keep unrated; then back to the discipline list."""
+    uid, pid, d, v = cb.from_user.id, callback_data.pid, callback_data.d, callback_data.v
+    if not may_rate(uid, pid) or not 0 <= d < len(DISCIPLINES):
+        return await cb.answer(tr("NOT_RATEABLE"), show_alert=True)
+    key = DISCIPLINES[d]
+    current = scores_of(pid, uid)[d]
+    if MIN_LEVEL <= v <= MAX_LEVEL and v != current:
+        db.set_score(pid, uid, key, v)
+        await cb.answer(tr("SCORE_SAVED", discipline=T.discipline(lang, key), n=v))
+    elif v == ERASE and current is not None:
+        db.set_score(pid, uid, key, None)
+        await cb.answer(tr("SCORE_ERASED", discipline=T.discipline(lang, key)))
     else:
-        await finish_peer_rating(cb.message, state, uid, data["target"], scores, data["name"], tr)
+        await cb.answer()
+    await show_disciplines(cb.message, bot, uid, pid, tr, lang)
 
 
-async def finish_self_rating(message: Message, state: FSMContext, uid: int, scores: list, bot: Bot, tr: Tr,
-                             lang: str):
-    if not db.save_rating(uid, uid, scores):
-        await message.answer(tr("SELF_RATE_REQUIRED"))
-        return await begin_rating(message, state, lang, target=uid, is_self=True, name="")
+@router.callback_query(Menu.filter(F.action == "selfdone"))
+async def on_self_done(cb: CallbackQuery, bot: Bot, tr: Tr, lang: str):
+    uid = cb.from_user.id
+    if db.player(uid) is None:
+        return await cb.answer(tr("EXPIRED"), show_alert=True)
+    if not db.is_self_rated(uid):
+        return await cb.answer(tr("SELF_RATE_REQUIRED"), show_alert=True)
+    await cb.answer()
+    with suppress(TelegramBadRequest):
+        await cb.message.edit_reply_markup(reply_markup=None)
     r = live_levels()[uid]
     if db.player(uid)["level"] is None:       # first rating: show it in games before the nightly run
         db.set_level(uid, r.level, r.tag)
@@ -891,19 +900,8 @@ async def finish_self_rating(message: Message, state: FSMContext, uid: int, scor
     shown = await nightly.set_tag(bot, GROUP_ID, uid, r.tag)
     if shown:
         db.set_tag_shown(uid, r.tag)
-    await message.answer(tr("SELF_RATE_DONE" if shown else "SELF_RATE_DONE_NO_TAG", tag=html.escape(r.tag)))
-    await state.clear()
-    await show_menu(message, uid, tr)
-
-
-async def finish_peer_rating(message: Message, state: FSMContext, uid: int, target: int, scores: list,
-                             name: str, tr: Tr):
-    await state.clear()
-    if rateable(uid, target) is None:
-        return await message.answer(tr("NOT_RATEABLE"), reply_markup=home_kb(tr))
-    if not db.save_rating(target, uid, scores):
-        return await message.answer(tr("NOTHING_SAVED"), reply_markup=menu_kb(uid, tr))
-    await message.answer(tr("RATING_SAVED", name=html.escape(name)), reply_markup=menu_kb(uid, tr))
+    await cb.message.answer(tr("SELF_RATE_DONE" if shown else "SELF_RATE_DONE_NO_TAG", tag=html.escape(r.tag)))
+    await show_menu(cb.message, uid, tr)
 
 
 # --- my stats (README §10) -------------------------------------------------------

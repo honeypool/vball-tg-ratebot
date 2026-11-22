@@ -9,6 +9,13 @@ DISCIPLINES:
   attacking: Attacking
   blocking: Blocking
   defense: Defense
+DISCIPLINES_SHORT:
+  serving: Serve
+  serve_receive: Receive
+  setting: Set
+  attacking: Attack
+  blocking: Block
+  defense: Defense
 
 NET_NOTE: "Players of both genders should be rated on games with standard male net height of 2.43m."
 NOT_MEMBER: "This bot only works for members of the group."
@@ -114,19 +121,19 @@ NOT_RATEABLE: "You can only rate players you've played a counting game with."
 
 RATE_SELECTED: "You have selected <b>{name}</b> for rating."
 RATE_INFO: "Games together: {games}, last: {ago}."
-RATE_AGAIN: "You already rated this player on {date}. Your new rating will replace the previous one."
-SKIP_HINT: "If you are not sure about some particular skill - feel free to skip to the next discipline."
-BTN_BACK: "BACK"
-BTN_OK: "OK"
-RATE_PROMPT: "Please rate {name} in:"
-RATE_PROMPT_SELF: "Please rate yourself in:"
-DISCIPLINE_STEP: "{discipline} ({step}/6)"
-LEVEL: "Level {n}:"
-BTN_CHOOSE: "Choose {n}"
-BTN_CANT_JUDGE: "Can't judge (skip)"
+RATE_FIRST: "You rate this player for the first time."
+RATE_AGAIN: "You have already rated this player {ago}."
+RATE_CHOOSE: "Choose the discipline to rate/rerate for <b>{name}</b>:"
+RATE_CHOOSE_SELF: "Choose the discipline to rate yourself. Rate at least one, then press ✅ Done:"
+BTN_BACK_TO_MENU: "« Back to menu"
+BTN_SELF_DONE: "✅ Done"
+RATE_SKILL: "Rate <b>{name}</b> skill:"
+RATE_SKILL_SELF: "Rate your skill:"
+BTN_ERASE: "Erase rating •{n}• for {discipline}"
+BTN_KEEP_UNRATED: "Keep unrated, go back to list"
+SCORE_SAVED: "Saved: {discipline} {n}. Levels are recalculated every night."
+SCORE_ERASED: "Rating for {discipline} erased."
 
-NOTHING_SAVED: "Nothing was saved."
-RATING_SAVED: "Thank you for rating {name}. Your rating is saved and will be taken into account soon. Levels are recalculated every night."
 EXPIRED: "This screen has expired. Please start again from the menu."
 
 STATS: |-

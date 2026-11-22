@@ -1,8 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import bot
 import texts as T
-from rating import DISCIPLINES
 
 NOW = datetime(2026, 11, 8, 12, 0, tzinfo=timezone.utc)   # 14:00 in Riga
 
@@ -27,71 +26,66 @@ def test_bad_input():
         assert bot.parse_game_time(s, NOW) is None
 
 
-def screen(lang="en", **data):
-    base = {"scores": [], "level": 0, "name": "Anna @anna", "self": False}
-    return bot.discipline_screen({**base, **data}, lang)
+EN = lambda k, **kw: T.t("en", k, **kw)
 
 
 def buttons(kb):
-    return [[(b.text, bot.Score.unpack(b.callback_data)) for b in row] for row in kb.inline_keyboard]
+    return [[(b.text, b.callback_data) for b in row] for row in kb.inline_keyboard]
 
 
-def quoted(rich):
-    return [b.text for b in rich.blocks[2].blocks]
+def texts(kb):
+    return [[t for t, _ in row] for row in buttons(kb)]
 
 
-def heading(rich):
-    """Prompt line, then the discipline in bold on its own line."""
-    assert rich.blocks[1].text.type == "bold"
-    return rich.blocks[0].text, rich.blocks[1].text.text
+def test_rating_header_first_time_and_again():
+    last = bot.iso(bot.now() - timedelta(days=13))
+    first = bot.rating_header("Anna (@anna)", 1, last, None, EN, "en")
+    assert first.split("\n") == [
+        "You have selected <b>Anna (@anna)</b> for rating.",
+        "Games together: 1, last: 13 days ago.",
+        "You rate this player for the first time.",
+        "*Players of both genders should be rated on games with standard male net height of 2.43m."]
+    again = bot.rating_header("Anna", 2, last, bot.iso(bot.now() - timedelta(days=5)), EN, "en")
+    assert "You have already rated this player 5 days ago." in again
+    assert "feel free" not in first + again
 
 
-def test_first_discipline_shows_only_level_0():
-    rich, kb = screen()
-    assert [b.type for b in rich.blocks] == ["paragraph", "paragraph", "blockquote"]
-    assert heading(rich) == ("Please rate Anna (@anna) in:", "Serving (1/6)")
-    assert quoted(rich) == ["Level 0:", T.criteria("en", 0, "serving")]   # one level only
-    rows = buttons(kb)
-    assert [t for t, _ in rows[0]] == ["Choose 0", "1▶"]                  # no ◀ at level 0
-    assert rows[0][0][1].kind == "choose" and rows[0][0][1].value == 0
-    assert rows[0][1][1].kind == "show" and rows[0][1][1].value == 1
-    assert [t for t, _ in rows[1]] == ["Can't judge (skip)"]
+def test_discipline_list_peer():
+    text, kb = bot.disciplines_screen(42, "HEADER", "Anna <a>", [None, 3, 2, 3, 2, None], False, EN, "en")
+    assert text == "HEADER\n\nChoose the discipline to rate/rerate for <b>Anna &lt;a&gt;</b>:"
+    assert texts(kb) == [["❓Serve »"], ["✅Receive - 3"], ["✅Set - 2"], ["✅Attack - 3"],
+                         ["✅Block - 2"], ["❓Defense »"], ["« Back to menu"]]
+    assert buttons(kb)[1][0][1] == bot.RateOpen(pid=42, d=1).pack()
+    assert buttons(kb)[6][0][1] == bot.Menu(action="home").pack()
 
 
-def test_middle_level_buttons_show_neighbours():
-    _, kb = screen(level=1)
-    assert [t for t, _ in buttons(kb)[0]] == ["◀0", "Choose 1", "2▶"]
+def test_discipline_list_self_needs_one_score_for_done():
+    _, kb = bot.disciplines_screen(7, "INTRO", "", [None] * 6, True, EN, "en")
+    assert len(kb.inline_keyboard) == 6                                     # no Done, no menu
+    ru = lambda k, **kw: T.t("ru", k, **kw)
+    text, kb = bot.disciplines_screen(7, "INTRO", "", [None, 4, None, None, None, None], True, ru, "ru")
+    assert texts(kb)[:2] == [["❓Подача »"], ["✅Приём - 4"]] and texts(kb)[6] == ["✅ Готово"]
+    assert buttons(kb)[6][0][1] == bot.Menu(action="selfdone").pack()
 
 
-def test_top_level_and_step():
-    _, kb = screen(scores=[3] * 5, level=6)
-    rows = buttons(kb)
-    assert [t for t, _ in rows[0]] == ["◀5", "Choose 6"]                  # no ▶ at level 6
-    assert DISCIPLINES[5] == "defense"
-    assert all(cd.step == 5 for row in rows for _, cd in row)            # stale presses can be ignored
+def test_level_screen_unrated():
+    text, kb = bot.level_screen(42, 5, "Anna (@anna)", None, False, EN, "en")
+    lines = text.split("\n")
+    assert lines[:2] == ["Rate <b>Anna (@anna)</b> skill:", "<b>Defense:</b>"]
+    assert lines[2:] == [f"<b>•{n}•</b> {T.criteria('en', n, 'defense')}" for n in range(7)]   # all 7 levels
+    assert "it's hit" in lines[2]                                       # plain text, no &#x27;
+    assert texts(kb) == [["0", "1", "2", "3", "4", "5", "6"], ["Keep unrated, go back to list"]]
+    assert buttons(kb)[0][3][1] == bot.RateSet(pid=42, d=5, v=3).pack()
+    assert buttons(kb)[1][0][1] == bot.RateSet(pid=42, d=5, v=bot.KEEP).pack()
 
 
-def test_name_without_username():
-    rich, _ = screen(name="Anna")
-    assert heading(rich)[0] == "Please rate Anna in:"
-
-
-def test_self_rating_prompt_and_translations():
-    rich, _ = screen(lang="ru", self=True, name="", level=3)
-    assert heading(rich) == ("Оцените себя в дисциплине:", "Подача (1/6)")
-    assert quoted(rich)[0] == "Уровень 3:"
-    rich, kb = screen(lang="lv", level=2)
-    assert heading(rich)[1] == "Servēšana (1/6)" and quoted(rich)[0] == "2. līmenis:"
-    assert buttons(kb)[1][0][0] == "Nevaru novērtēt (izlaist)"
-
-
-def test_confirm_text_mentions_previous_rating():
-    tr = lambda k, **kw: T.t("en", k, **kw)
-    last = bot.iso(bot.now())
-    first = bot.confirm_text("Anna", 2, last, None, tr, "en")
-    assert "already rated" not in first and "Games together: 2, last: today." in first
-    again = bot.confirm_text("Anna", 2, last, "2026-11-10T10:00:00Z", tr, "en")
-    assert "You already rated this player on 10.11.2026." in again
+def test_level_screen_rated_and_self():
+    text, kb = bot.level_screen(7, 0, "", 1, True, lambda k, **kw: T.t("lv", k, **kw), "lv")
+    assert text.startswith("Novērtējiet savu prasmi:\n<b>Servēšana:</b>\n<b>•0•</b> ")
+    assert texts(kb) == [["0", "1✓", "2", "3", "4", "5", "6"], ["Dzēst vērtējumu •1• disciplīnā Servēšana"]]
+    assert buttons(kb)[1][0][1] == bot.RateSet(pid=7, d=0, v=bot.ERASE).pack()
+    text, _ = bot.level_screen(7, 0, "", 1, False, EN, "en")
+    assert len(text) < 4096
 
 
 def game_buttons(kb):

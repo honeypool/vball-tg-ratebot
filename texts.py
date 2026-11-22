@@ -52,6 +52,11 @@ def discipline(lang: str, key: str) -> str:
     return STRINGS[norm(lang)]["DISCIPLINES"][key]
 
 
+def discipline_short(lang: str, key: str) -> str:
+    """Short discipline name for the discipline list."""
+    return STRINGS[norm(lang)]["DISCIPLINES_SHORT"][key]
+
+
 def weekday(lang: str, i: int) -> str:
     """Short weekday name, i = 0 (Monday) .. 6."""
     return STRINGS[norm(lang)]["WEEKDAYS"][i]

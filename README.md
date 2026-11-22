@@ -36,14 +36,14 @@ Run only one `bot.py` per token at a time. A second copy, on this PC or on the s
 
 1. Someone outside the group gets "This bot only works for members of the group".
 2. `/start` shows the language choice (English / Русский / Latviešu). After that, everything (consent text, menu, rating screen, criteria) is in the chosen language. **🌐 Language** in the menu changes it later.
-3. Consent, then self-rate. The rating screen shows one level at a time and starts at level 0. ◀ / ▶ change the level in the same message. After **✔ Choose N**, the next discipline opens at level N. The tag `[~~X.X]` appears in the group (not for the owner or admins).
+3. Consent, then self-rate: the discipline list shows `❓Serve »` everywhere and no **Done**. Rate one discipline → `✅Serve - 3` and **Done** appear. **Done** → the tag `[~~X.X]` appears in the group (not for the owner or admins).
 4. **My games** → **Submit a new game** with only yourself selected, or with 2 players but not yourself: **Done** refuses. With yourself and 1 more: the game is saved (it doesn't count for ratings until it has 4). Open it in **My games**, **Add players** to reach 4.
 4a. Each added player gets "Did you play?". **Yes** → they count. **No** → removed, and the admin gets a notice naming both players. Leave one unanswered (set `CONFIRM_WITHIN` to 2 minutes for the test) → removed and the admin is notified.
 4b. In the player list, send the contact of a consented player → they're ticked. Send the contact of someone who hasn't joined → the invite message. `/export` contains no phone numbers.
 5. Submit the same game 30 minutes later with one shared player: the bot offers to add the new players to the existing game and creates nothing.
 6. A player already in a 19:00 game is skipped when added to a 19:45 game.
 7. **Rate a player** lists only people you played a counting game (4+ players) with.
-8. On the rating screen, ◀ is hidden at level 0 and ▶ at level 6. Choosing "Can't judge" six times saves nothing.
+8. Rating a player: the list shows your current scores. Open a discipline: all 7 levels are visible, your score has ✓. Tap another level → saved, back to the list. **Erase rating** → `❓Serve »`. On an unrated one, **Keep unrated** changes nothing.
 9. Run `nightly.py --once`: the logs show tags updated only where the text changed.
 10. **My stats** is hidden with 2 peer ratings and shown with 3.
 11. `/export` from a non-admin gets no response. From the admin, it returns a zip.
@@ -95,8 +95,8 @@ UI languages: **English, Russian, Latvian.** `en` is the reference: the other lo
 1. The user opens the bot in private chat. The bot checks the user is a member of `GROUP_ID`. If not, it replies "This bot only works for members of the group" and stops.
 2. **Language**: the bot asks "Choose language / Выберите язык / Izvēlieties valodu" with English / Русский / Latviešu buttons. Before consent the choice is kept only in memory. It is stored with the player on consent. Messages to unknown users (e.g. "only for members") use the Telegram app language.
 3. The bot shows the description and asks for consent: **[I agree] / [No thanks]**. Consent is recorded as `consent_at`.
-4. **Self-rating** (required before anything else): the same 6-discipline flow as rating someone else (§7). It is saved as a rating where `rater = player`.
-5. **Right after the self-rating, set the tag** `[~~X.X]` (see §9).
+4. **Self-rating** (required before anything else): the same discipline list and level screens as rating someone else (§7), at least one discipline, then **Done**. It is saved as a rating where `rater = player`.
+5. **On Done, set the tag** `[~~X.X]` (see §9).
 6. Show the main menu.
 
 Users who have not consented never get a tag and can't be rated.
@@ -154,22 +154,36 @@ The game record still holds only the start time and the players.
 Candidates are all consented players with **≥1 counting game together** with the rater, excluding the rater. Players without a shared game can't be rated.
 
 Sort the candidates by:
-1. "needs my rating" first: not rated by me yet, **or** my rating is older than 90 days
+1. "needs my rating" first: not rated by me yet, **or** my rating is older than 90 days, **or** my rating still leaves some disciplines unrated (`❓`)
 2. fewest peer ratings received
 3. most games together
 
-Show the **top 5 that need my rating**, with "You had a chance to play with these players who really need your rating. Please spend a few minutes to rate them." Players I rated within 90 days are never on this first screen; if nobody needs my rating, say "You have recently rated all the players you played with…". A **[Show all]** button lists all candidates in the same order, 10 per page, with recently rated players at the end marked ✓ (they can still be re-rated).
+Show the **top 5 that need my rating**, with "You had a chance to play with these players who really need your rating. Please spend a few minutes to rate them." Players I fully rated (all 6 disciplines) within 90 days are never on this first screen; if nobody needs my rating, say "You have recently rated all the players you played with…". A **[Show all]** button lists all candidates in the same order, 10 per page, with recently rated players at the end marked ✓ (they can still be re-rated).
 
 ### Rating screen
 
-1. **Confirmation screen** after a player is picked: "You have selected {name} for rating. / Games together: N, last: {ago}. / (if I rated this player before) You already rated this player on dd.mm.yyyy. Your new rating will replace the previous one. / Players of both genders should be rated on games with standard male net height of 2.43m. / If you are not sure about some particular skill - feel free to skip to the next discipline." Buttons **[BACK]** (back to the candidate list) and **[OK]** (start rating; the confirmation message is deleted so it does not distract).
-2. Ask the 6 disciplines one at a time: Serving, Serve receive, Setting, Attacking, Blocking, Defense.
-3. For each discipline, send one short **rich message** (`sendRichMessage`) showing **one discipline and one level's criteria**, so nothing needs scrolling: "Please rate {name} (@username) in:" (self-rating: "Please rate yourself in:"), the discipline and step in bold on the next line (**Serving (1/6)**), then a quote with `Level N:` and that level's criteria text in the user's language. Levels are shown only as numbers 0–6, with no division codes (A, BB…). No classic-HTML fallback.
-4. Buttons: **[◀N-1] [Choose N] [N+1▶]** and **[Can't judge (skip)]**. ◀ / ▶ show the previous / next level by editing the same message. ◀ is hidden at 0 and ▶ at 6. **Choose N** saves level N for this discipline. **Can't judge** saves NULL.
-5. The first discipline opens at **level 0** (self-rating and peer rating alike). Each later discipline opens at the level chosen for the previous one. After "Can't judge", it stays at the level that was shown.
-6. At least one discipline must be answered. If all six are "Can't judge", save nothing and show "Nothing was saved."
-7. Saving: **one rating per (player, rater) pair.** Rating again overwrites the scores and sets `updated_at = now`.
-8. Confirmation: "Thank you for rating {name}. Your rating is saved and will be taken into account soon. Levels are recalculated every night."
+Everything happens in **one message** that is edited in place. Every tap saves at once; there is no final
+"Save" step.
+
+1. **Discipline list** after a player is picked:
+   "You have selected {name} for rating. / Games together: N, last: {ago}. / You rate this player for the first
+   time. *(or)* You have already rated this player {ago}. / \*Players of both genders should be rated on games
+   with standard male net height of 2.43m. / Choose the discipline to rate/rerate for {name}:"
+   Then one button per discipline with my current score for this player: `❓Serve »` (no score yet), `✅Receive - 3`, …
+   (short names: Serve, Receive, Set, Attack, Block, Defense), and **[« Back to menu]**.
+2. **Level screen** when a discipline is tapped: "Rate {name} skill:", the discipline in bold, then **all 7
+   levels in one plain text block**, one line each, the level number in bold: **•0•** `<criteria>` … **•6•** `<criteria>` (no emojis, so the lines
+   stay tight; about 2000 characters, well below Telegram's 4096). Levels are shown only as numbers 0–6, with no
+   division codes (A, BB…). Buttons:
+   - row 1: **[0] … [6]**, with `✓` next to my current score (`3✓`). Tapping a level saves it and returns to the
+     list (a short "Saved" notice pops up); tapping the ✓ level returns without a change.
+   - row 2, only if this discipline has a score: **[Erase rating •N• for {discipline}]** sets it back to NULL.
+   - row 3, only if it has no score: **[Keep unrated, go back to list]**.
+3. Saving: **one rating per (player, rater) pair**, one column per discipline. Each change updates only that
+   discipline and sets `updated_at = now` (this restarts the 90-day "needs my rating" clock and `w_age` for the
+   whole rating). Erasing the last scored discipline deletes the rating.
+4. **Self-rating** uses the same two screens. The list starts with the self-rating intro, and instead of
+   "Back to menu" has **[✅ Done]** once at least one discipline is rated. Done sets the tag (§9) and shows the menu.
 
 ## 8. Level calculation (`rating.py`)
 
@@ -316,14 +330,14 @@ CREATE TABLE ratings (
 ## 14. Acceptance tests
 
 1. `rating.py` reproduces both worked examples in §8 exactly.
-2. A player with only a self-rating gets tag `[~~X.X]` right after finishing the self-rating.
+2. A player with only a self-rating gets tag `[~~X.X]` right after pressing Done on the self-rating.
 3. Submitting a game 30 minutes away from an existing game that shares a player offers to add the players to it and creates nothing. Without a shared player, a new game is created.
 4. A player already in a game at 19:00 is not added to another game at 19:45.
 5. A game with 3 players does not count toward "games together", and its players can't rate each other through it.
 6. A user cannot rate someone they have no counting game with.
-7. Rating the same player twice leaves one row with the new scores and a new `updated_at`.
-8. Choosing "Can't judge" for all 6 disciplines saves nothing.
-9. The rating screen shows one level's criteria and starts at level 0. ◀ / ▶ move within 0–6. The next discipline opens at the last chosen level.
+7. Changing one discipline of an existing rating updates only that column and `updated_at`; the row stays one per (player, rater).
+8. Erasing the last scored discipline deletes the rating.
+9. The level screen shows all 7 levels' criteria in one message, marks the current score with ✓, and offers Erase (scored) or Keep unrated (not scored).
 10. Revoking consent removes the user's ratings (given and received), game memberships and tag. The nightly run then recalculates the affected players.
 11. The nightly run calls `setChatMemberTag` only for players whose tag text changed.
 12. "My stats" is hidden with 2 peer ratings and shown with 3.
